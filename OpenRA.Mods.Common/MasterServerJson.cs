@@ -11,6 +11,7 @@
 
 using System.Collections.Generic;
 using System.IO;
+using System.Net;
 using System.Text.Json;
 
 namespace OpenRA.Mods.Common
@@ -37,6 +38,7 @@ namespace OpenRA.Mods.Common
 			{ "version", "Version" },
 			{ "modtitle", "ModTitle" },
 			{ "modversion", "ModVersion" },
+			{ "modwebsite", "ModWebsite" },
 			{ "modicon32", "ModIcon32" },
 			{ "map", "Map" },
 			{ "players", "Players" },
@@ -104,13 +106,15 @@ namespace OpenRA.Mods.Common
 			return nodes;
 		}
 
+		// The master server HTML-escapes every string it lists (htmlspecialchars), in the JSON and the YAML
+		// listing alike: "C&amp;C", "Drora&#039;s Game". Decode them, so that names and versions are the real ones.
 		static string ToValue(JsonElement value)
 		{
 			return value.ValueKind switch
 			{
 				JsonValueKind.True => "true",
 				JsonValueKind.False => "false",
-				JsonValueKind.String => value.GetString(),
+				JsonValueKind.String => WebUtility.HtmlDecode(value.GetString()),
 				JsonValueKind.Null => "",
 				_ => value.GetRawText(),
 			};
