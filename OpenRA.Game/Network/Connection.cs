@@ -96,7 +96,7 @@ namespace OpenRA.Network
 		}
 	}
 
-	public sealed class NetworkConnection : IConnection
+	public sealed partial class NetworkConnection : IConnection
 	{
 		public readonly ConnectionTarget Target;
 		internal ReplayRecorder Recorder { get; private set; }
@@ -114,6 +114,14 @@ namespace OpenRA.Network
 		public NetworkConnection(ConnectionTarget target)
 		{
 			Target = target;
+
+			// Browsers cannot open TCP sockets: use the host's stream transport (see Connection.Browser.cs).
+			if (OperatingSystem.IsBrowser())
+			{
+				BrowserConnect();
+				return;
+			}
+
 			new Thread(NetworkConnectionConnect)
 			{
 				Name = $"{GetType().Name} (connect to {target})",
@@ -274,7 +282,10 @@ namespace OpenRA.Network
 				}
 
 				queuedSyncPackets.Clear();
-				ms.WriteTo(tcp.GetStream());
+				if (OperatingSystem.IsBrowser())
+					BrowserSend(ms);
+				else
+					ms.WriteTo(tcp.GetStream());
 			}
 			catch (SocketException) { /* drop this on the floor; we'll pick up the disconnect from the reader thread */ }
 			catch (ObjectDisposedException) { /* ditto */ }
@@ -380,6 +391,8 @@ namespace OpenRA.Network
 			// Closing the stream will cause any reads on the receiving thread to throw.
 			// This will mark the connection as no longer connected and the thread will terminate cleanly.
 			tcp?.Close();
+			if (OperatingSystem.IsBrowser())
+				BrowserClose();
 
 			Recorder?.Dispose();
 		}
