@@ -58,6 +58,7 @@ namespace OpenRA.Platforms.Default
 		float volume = 1f;
 		IntPtr device;
 		IntPtr context;
+		WPos? listenerPosition;
 
 		static string[] QueryDevices(string label, int type)
 		{
@@ -337,6 +338,14 @@ namespace OpenRA.Platforms.Default
 
 		public void SetListenerPosition(WPos position)
 		{
+			// The game sets the listener every rendered frame, usually to where it already is. Doing that
+			// changes nothing, but some OpenAL implementations recompute every source on each call (the
+			// browser build's WebAudio-based OpenAL spent about 5 % of its main thread there in a match).
+			if (position == listenerPosition)
+				return;
+
+			listenerPosition = position;
+
 			// Move the listener out of the plane so that sounds near the middle of the screen aren't too positional
 			AL10.alListener3f(AL10.AL_POSITION, position.X, position.Y, position.Z + 2133);
 
