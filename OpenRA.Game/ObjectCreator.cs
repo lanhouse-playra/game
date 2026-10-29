@@ -45,6 +45,13 @@ namespace OpenRA
 
 		static void LoadAssembly(List<Assembly> assemblyList, string resolvedPath)
 		{
+			// Browser (WebAssembly) builds ship every assembly in the app bundle, not as files on disk.
+			if (OperatingSystem.IsBrowser())
+			{
+				assemblyList.Add(Assembly.Load(Path.GetFileNameWithoutExtension(resolvedPath)));
+				return;
+			}
+
 			// .NET doesn't provide any way of querying the metadata of an assembly without either:
 			//   (a) loading duplicate data into the application domain, breaking the world.
 			//   (b) crashing if the assembly has already been loaded.

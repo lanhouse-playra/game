@@ -17,6 +17,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Runtime;
 using System.Threading;
 using OpenRA.Graphics;
@@ -29,7 +30,7 @@ using OpenRA.Widgets;
 namespace OpenRA
 {
 	[IncludeStaticFluentReferences(typeof(Server.Server), typeof(Player), typeof(UnitOrders), typeof(OrderManager))]
-	public static class Game
+	public static partial class Game
 	{
 		[FluentReference("filename")]
 		const string SavedScreenshot = "notification-saved-screenshot";
@@ -250,7 +251,10 @@ namespace OpenRA
 			// - We can remove any fragmentation in the LOH caused by temporary loading garbage.
 			// - A loading screen is visible, so a delay won't matter to the user.
 			//   Much better to clean up now then to drop frames during gameplay for GC pauses.
-			GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+			// Mono (used by the browser build) has no LOH compaction setting and throws if it is set.
+			if (!OperatingSystem.IsBrowser())
+				GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+
 			GC.Collect();
 
 			// PostLoadComplete is designed for anything that should trigger at the very end of loading.
@@ -462,8 +466,11 @@ namespace OpenRA
 		{
 			var rendererPath = Path.Combine(Platform.BinDir, "OpenRA.Platforms." + platformName + ".dll");
 
-			var loader = new AssemblyLoader(rendererPath);
-			var platformType = loader.LoadDefaultAssembly().GetTypes().SingleOrDefault(t => typeof(IPlatform).IsAssignableFrom(t));
+			// Browser (WebAssembly) builds ship every assembly in the app bundle, not as files on disk.
+			var platformAssembly = OperatingSystem.IsBrowser() ?
+				Assembly.Load("OpenRA.Platforms." + platformName) :
+				new AssemblyLoader(rendererPath).LoadDefaultAssembly();
+			var platformType = platformAssembly.GetTypes().SingleOrDefault(t => typeof(IPlatform).IsAssignableFrom(t));
 
 			if (platformType == null)
 				throw new InvalidOperationException("Platform dll must include exactly one IPlatform implementation.");
