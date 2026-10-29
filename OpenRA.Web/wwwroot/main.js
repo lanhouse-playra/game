@@ -86,7 +86,7 @@ const NOTICES = {
 	write: 'Saving settings, replays or maps in this browser failed; changes may be lost when the page closes.',
 	restore: 'The saved settings could not be read, so the game started with default settings. "Reset saved data" on the loading screen clears them.',
 	skipped: 'Some saved files could not be restored and were skipped.',
-	maps: 'The map pack could not be downloaded, so the map list only holds maps you downloaded before. Maps of a server you join are still downloaded from the OpenRA resource center when needed. Reload the page to try again.',
+	maps: 'The game\'s built-in maps could not be downloaded. Until the page is reloaded, the map list only holds maps from the OpenRA resource center, and a lobby on a built-in map shows it as missing. Reload the page to try again.',
 	clock: 'This browser blocked the background clock the game uses in hidden tabs. If you switch to another tab or window during a multiplayer match, the game slows down for every player: keep this tab visible while you play.',
 };
 
@@ -521,9 +521,10 @@ function createNetModule(getTransport) {
 // second package that is downloaded once the main menu is up, so that the first visit does not wait
 // for them (build-web.sh, tools/split-maps.py). Until they are in, the map chooser and the mission
 // browser list only the maps this browser downloaded before (a list opened meanwhile fills in when it
-// is opened again), and a lobby or replay on a bundled map shows it as missing, with the engine's
-// usual offer to download it from the OpenRA resource center; the lobby and the replay browser pick
-// the map up by themselves once it is loaded. A status line shows the progress outside matches.
+// is opened again), and a lobby or replay on a bundled map shows it as missing: the engine searches
+// the OpenRA resource center for it, which does not carry the bundled maps of playtest releases. The
+// lobby and the replay browser pick the map up by themselves once it is loaded. A status line shows
+// the progress outside matches.
 // The maps are added to the engine's map cache a few at a time between frames, never during a match
 // or a replay.
 const MAP_LOAD_BUDGET_MS = 8;
