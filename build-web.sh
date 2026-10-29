@@ -27,6 +27,8 @@
 #   WEBRA_CONTENT_DIR   optional local directory with the mod content (e.g. .../Content/ra/v2).
 #                       It is packaged into dist/data for local testing only. Never publish it.
 #   WEBRA_EM_CACHE      emscripten cache (default: OpenRA.Web/obj/emcache)
+#   WEBRA_PROXY_URL     WebSocket-to-TCP relay the page uses for game connections, written to
+#                       data/build.json, e.g. wss://relay.example.org/connect (dev builds also take ?proxy=)
 #
 # Usage: ./build-web.sh            build dist/
 #        ./build-web.sh serve      serve dist/ on http://127.0.0.1:8090/
@@ -314,8 +316,13 @@ if [ -n "${WEBRA_CONTENT_DIR:-}" ]; then
 	python3 -I "${SRC_WEB}/tools/pack-data.py" "${WEBRA_CONTENT_DIR}" /support/Content/ra/v2 "${DIST}/data/content"
 fi
 
+WEBRA_PROXY_URL="${WEBRA_PROXY_URL:-}"
+if [ -n "${WEBRA_PROXY_URL}" ]; then
+	printf '%s' "${WEBRA_PROXY_URL}" | grep -Eq '^wss?://[A-Za-z0-9.:/_~%-]+$' || fail "WEBRA_PROXY_URL must be a plain ws:// or wss:// URL without query: ${WEBRA_PROXY_URL}"
+fi
+
 cat > "${DIST}/data/build.json" << EOF
-{"version":"${VERSION}","commit":"${COMMIT}","dev":${DEV_BOOL},"configuration":"${CONFIGURATION}","aot":${RUN_AOT},"runtime":"${DOTNET_RUNTIME_VERSION}","mods":"${WEBRA_MODS}","content":$([ -n "${WEBRA_CONTENT_DIR:-}" ] && echo true || echo false)}
+{"version":"${VERSION}","commit":"${COMMIT}","dev":${DEV_BOOL},"configuration":"${CONFIGURATION}","aot":${RUN_AOT},"runtime":"${DOTNET_RUNTIME_VERSION}","mods":"${WEBRA_MODS}","content":$([ -n "${WEBRA_CONTENT_DIR:-}" ] && echo true || echo false),"proxy":"${WEBRA_PROXY_URL}"}
 EOF
 
 echo "Built ${VERSION} (${COMMIT}, dev=${DEV_BOOL}, AOT=${RUN_AOT}) into ${DIST}"
