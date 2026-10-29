@@ -121,6 +121,13 @@ namespace OpenRA.Web
 			return string.Create(CultureInfo.InvariantCulture, $"{r.X},{r.Y},{r.Width},{r.Height}");
 		}
 
+		/// <summary>
+		/// The type of the world being shown ("Shellmap", "Regular", "Editor", or "none"), for the page.
+		/// Cheap, unlike <see cref="Diagnostics"/>, whose managed heap size walks the whole heap.
+		/// </summary>
+		[JSExport]
+		public static string WorldType() => Game.BrowserWorldType;
+
 		/// <summary>Small JSON blob for automated tests and the on-page status line.</summary>
 		[JSExport]
 		public static string Diagnostics(bool resetFrameStats)
