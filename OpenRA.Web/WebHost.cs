@@ -146,7 +146,8 @@ namespace OpenRA.Web
 			sb.Append(CultureInfo.InvariantCulture, $"\"frameMsWorst\":{frameMillisecondsWorst:F3},");
 			sb.Append(CultureInfo.InvariantCulture, $"\"logicFramesMeasured\":{logicFramesMeasured},");
 			sb.Append(CultureInfo.InvariantCulture, $"\"logicFrameMsAvg\":{(logicFramesMeasured > 0 ? logicFrameMillisecondsTotal / logicFramesMeasured : 0):F3},");
-			sb.Append(CultureInfo.InvariantCulture, $"\"logicFrameMsWorst\":{logicFrameMillisecondsWorst:F3}");
+			sb.Append(CultureInfo.InvariantCulture, $"\"logicFrameMsWorst\":{logicFrameMillisecondsWorst:F3},");
+			sb.Append(CultureInfo.InvariantCulture, $"\"logicBudgetResets\":{Game.BrowserLogicBudgetResets}");
 			sb.Append('}');
 
 			if (resetFrameStats)
