@@ -665,8 +665,14 @@ namespace OpenRA.Platforms.Default
 
 		static T Bind<T>(string name)
 		{
-			return (T)(object)Marshal.GetDelegateForFunctionPointer(SDL.SDL_GL_GetProcAddress(name), typeof(T));
+			// Browser (WebAssembly) builds route lookups through a small native shim that adapts
+			// the few calls WebGL 2 does not support (BGRA texture formats), see OpenRA.Web/native.
+			var address = OperatingSystem.IsBrowser() ? webra_gl_get_proc_address(name) : SDL.SDL_GL_GetProcAddress(name);
+			return (T)(object)Marshal.GetDelegateForFunctionPointer(address, typeof(T));
 		}
+
+		[DllImport("webra", CallingConvention = CallingConvention.Cdecl)]
+		static extern IntPtr webra_gl_get_proc_address([MarshalAs(UnmanagedType.LPUTF8Str)] string name);
 
 		public static bool DetectGLFeatures()
 		{
@@ -689,6 +695,12 @@ namespace OpenRA.Platforms.Default
 				// Core features are defined as the shared feature set of GL 3.2 and (GLES 3 + derivatives, BGRA extensions)
 				var hasBGRA = SDL.SDL_GL_ExtensionSupported("GL_EXT_texture_format_BGRA8888") == SDL.SDL_bool.SDL_TRUE;
 				var hasDerivatives = SDL.SDL_GL_ExtensionSupported("GL_OES_standard_derivatives") == SDL.SDL_bool.SDL_TRUE;
+
+				// WebGL 2 has neither extension, but the browser GL shim converts BGRA uploads to RGBA
+				// and standard derivatives are part of core GLSL ES 3.00.
+				if (OperatingSystem.IsBrowser())
+					hasBGRA = hasDerivatives = true;
+
 				if (Version.Contains(" ES") && hasBGRA && hasDerivatives && major >= 3)
 				{
 					hasValidConfiguration = true;

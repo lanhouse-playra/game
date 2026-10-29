@@ -149,7 +149,11 @@ namespace OpenRA.Platforms.Default
 				// Prefer standard GL over GLES provided by the native driver
 				var testProfiles = new List<GLProfile> { GLProfile.ANGLE, GLProfile.Modern, GLProfile.Embedded };
 				var errorLog = new List<string>();
-				supportedProfiles = testProfiles
+
+				// The browser (WebAssembly) build always renders through WebGL 2 (GLES 3.0) on the page's canvas.
+				// Probing creates throwaway 1x1 windows, and in the browser they all share that canvas and
+				// its single WebGL context, which then keeps the probe's 1x1 viewport.
+				supportedProfiles = OperatingSystem.IsBrowser() ? [GLProfile.Embedded] : testProfiles
 					.Where(profile => CanCreateGLWindow(profile, errorLog))
 					.ToArray();
 
@@ -343,7 +347,8 @@ namespace OpenRA.Platforms.Default
 			// The calling thread will then have more time to process other tasks, since rendering happens in parallel.
 			// If the calling thread is the main game thread, this means it can run more logic and render ticks.
 			// This is disabled when running in windowed mode on Windows because it breaks the ability to minimize/restore the window.
-			if (Platform.CurrentPlatform == PlatformType.Windows && windowMode == WindowMode.Windowed)
+			// The browser (WebAssembly) build is single-threaded and must render on the page's main thread.
+			if ((Platform.CurrentPlatform == PlatformType.Windows && windowMode == WindowMode.Windowed) || OperatingSystem.IsBrowser())
 			{
 				var ctx = new Sdl2GraphicsContext(this);
 				ctx.InitializeOpenGL();
