@@ -118,6 +118,10 @@ namespace OpenRA
 		[Desc("Takes a comma separated list of IP addresses that are not allowed to join.")]
 		public FrozenSet<string> Ban = [];
 
+		[Desc("Takes a comma separated list of IP addresses or CIDR networks of trusted relays. A connection from one of them",
+			"must start with a PROXY protocol v1 header, and the client address it names is used for bans, GeoIP and logs.")]
+		public FrozenSet<string> TrustedProxies = [];
+
 		[Desc("For dedicated servers only, allow anonymous clients to join.")]
 		public bool RequireAuthentication = false;
 
