@@ -23,6 +23,7 @@ OpenRA.Mods.Common/Widgets/Logic/MissionBrowserLogic.cs
 OpenRA.Mods.Common/Widgets/Logic/ServerListLogic.cs
 OpenRA.Platforms.Default/OpenAlSoundEngine.cs
 OpenRA.Platforms.Default/OpenGL.cs
+OpenRA.Platforms.Default/Sdl2GraphicsContext.cs
 OpenRA.Platforms.Default/Sdl2PlatformWindow.cs
 OpenRA.Test/OpenRA.Game/StreamFrameReaderTest.cs
 build-web.sh
