@@ -515,7 +515,7 @@ function watchFullscreenButton() {
 	const update = () => {
 		let inMatch = false;
 		try {
-			inMatch = WebRA.diagnostics().worldType === 'Regular';
+			inMatch = WebRA.host.WorldType() === 'Regular';
 		} catch {
 			// Not booted yet.
 		}
