@@ -1,0 +1,98 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+	<!--
+		Browser (WebAssembly) host for OpenRA. Built by build-web.sh, which first produces the native
+		inputs below ($(WebraNativeDir)) and the Eluant build with WebAssembly callback markers
+		($(WebraEluantPath)) and the generated GL delegate signatures ($(WebraGeneratedDir)).
+	-->
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<RootNamespace>OpenRA.Web</RootNamespace>
+		<TargetPlatform>browser-wasm</TargetPlatform>
+		<OutputPath>$(MSBuildProjectDirectory)/bin/$(Configuration)/</OutputPath>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<Nullable>disable</Nullable>
+
+		<!-- OpenRA loads traits, widgets and mod assemblies through reflection. -->
+		<PublishTrimmed>false</PublishTrimmed>
+		<!-- OpenRA creates CultureInfo objects for its Fluent translations. -->
+		<InvariantGlobalization>false</InvariantGlobalization>
+		<UseSystemResourceKeys>false</UseSystemResourceKeys>
+		<WasmEnableThreads>false</WasmEnableThreads>
+
+		<!-- Native build: link emscripten's SDL2, FreeType, OpenAL and WebGL 2 plus our Lua and GL shim. -->
+		<WasmBuildNative>true</WasmBuildNative>
+		<WasmCachePath Condition="'$(WebraEmCache)' != ''">$(WebraEmCache)</WasmCachePath>
+		<EmccInitialHeapSize>268435456</EmccInitialHeapSize>
+		<EmccMaximumHeapSize>2147483648</EmccMaximumHeapSize>
+		<EmccExtraLDFlags>-sUSE_SDL=2 -sUSE_FREETYPE=1 -lopenal -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1 -sGL_ENABLE_GET_PROC_ADDRESS=1 -sSUPPORT_LONGJMP=wasm</EmccExtraLDFlags>
+
+		<!--
+			SDL2-CS binds every SDL entry point, including platform-specific ones (Android, WinRT, ...) that
+			emscripten's SDL2 does not have. Those become JS stubs that abort if called; the link log lists
+			them as "undefined symbol" warnings. OpenRA only calls portable SDL functions.
+		-->
+		<WasmAllowUndefinedSymbols>true</WasmAllowUndefinedSymbols>
+
+		<!-- Writes dotnet.native.js.symbols (function index to name) to symbolicate wasm stack traces. -->
+		<WasmEmitSymbolMap>true</WasmEmitSymbolMap>
+
+		<RunAOTCompilation Condition="'$(RunAOTCompilation)' == ''">false</RunAOTCompilation>
+	</PropertyGroup>
+
+	<!--
+		Mono AOT requires IL trimming. Partial trimming only trims assemblies marked as trimmable (the
+		framework); OpenRA's own assemblies stay whole for their reflection-based loading.
+	-->
+	<PropertyGroup Condition="'$(RunAOTCompilation)' == 'true'">
+		<PublishTrimmed>true</PublishTrimmed>
+		<TrimMode>partial</TrimMode>
+		<SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\OpenRA.Game\OpenRA.Game.csproj" />
+		<ProjectReference Include="..\OpenRA.Platforms.Default\OpenRA.Platforms.Default.csproj" />
+		<ProjectReference Include="..\OpenRA.Mods.Common\OpenRA.Mods.Common.csproj" />
+		<ProjectReference Include="..\OpenRA.Mods.Cnc\OpenRA.Mods.Cnc.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- C sources and the Eluant addition are built by build-web.sh, not by this project. -->
+		<Compile Remove="native/**" />
+	</ItemGroup>
+
+	<ItemGroup Condition="'$(WebraGeneratedDir)' != ''">
+		<Compile Include="$(WebraGeneratedDir)GLSignatures.g.cs" />
+	</ItemGroup>
+
+	<ItemGroup Condition="'$(WebraNativeDir)' != ''">
+		<NativeFileReference Include="$(WebraNativeDir)lua51.a" />
+		<NativeFileReference Include="$(WebraNativeDir)webra.a" />
+		<NativeFileReference Include="$(WebraNativeDir)SDL2.a" />
+		<NativeFileReference Include="$(WebraNativeDir)freetype6.a" />
+		<NativeFileReference Include="$(WebraNativeDir)soft_oal.a" />
+	</ItemGroup>
+
+	<!--
+		Directory.Build.props removes every analyzer in Release builds to save compile time. That would
+		also remove the source generator behind [JSExport], so this project only drops the style analyzers.
+	-->
+	<Target Name="DisableAnalyzers" BeforeTargets="CoreCompile" Condition="'$(Configuration)'=='Release'">
+		<ItemGroup>
+			<Analyzer Remove="@(Analyzer)" Condition="$([System.String]::Copy('%(Filename)').StartsWith('StyleCop')) or $([System.String]::Copy('%(Filename)').StartsWith('Roslynator'))" />
+		</ItemGroup>
+	</Target>
+
+	<!--
+		Swap the packaged Eluant.dll for the same upstream source built with its MonoPInvokeCallback
+		markers enabled (see native/eluant/MonoPInvokeCallbackAttribute.cs). The API is identical.
+	-->
+	<Target Name="WebraUseWasmEluant" AfterTargets="ResolvePackageAssets" Condition="'$(WebraEluantPath)' != ''">
+		<Error Condition="!Exists('$(WebraEluantPath)')" Text="WebraEluantPath does not exist: $(WebraEluantPath)" />
+		<ItemGroup>
+			<_WebraPackagedEluant Include="@(RuntimeCopyLocalItems)" Condition="'%(Filename)%(Extension)' == 'Eluant.dll'" />
+			<RuntimeCopyLocalItems Remove="@(_WebraPackagedEluant)" />
+			<RuntimeCopyLocalItems Include="$(WebraEluantPath)" NuGetPackageId="OpenRA-Eluant" NuGetPackageVersion="wasm" AssetType="runtime" CopyLocal="true" DestinationSubPath="Eluant.dll" />
+		</ItemGroup>
+	</Target>
+</Project>
