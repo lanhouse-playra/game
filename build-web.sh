@@ -315,7 +315,17 @@ done
 	set_engine_version "${VERSION}" "${ENGINE_STAGE}"
 	set_mod_version "${VERSION}" "${ENGINE_STAGE}"/mods/*/mod.yaml
 )
+# The maps the main menu does not need (all but the shellmaps, about 11 MB of already compressed
+# .oramap files) go into a second package that the page downloads after the menu is up, so that the
+# first visit does not wait for them. Same paths in the browser's file system as before.
+MAPS_STAGE="${OBJ}/stage/maps"
+rm -rf "${MAPS_STAGE}"
+python3 -I "${SRC_WEB}/tools/split-maps.py" "${ENGINE_STAGE}" "${MAPS_STAGE}" ${WEBRA_MODS}
 python3 -I "${SRC_WEB}/tools/pack-data.py" "${ENGINE_STAGE}" /openra "${DIST}/data/engine"
+MAP_DATA=""
+if [ -d "${MAPS_STAGE}" ]; then
+	python3 -I "${SRC_WEB}/tools/pack-data.py" "${MAPS_STAGE}" /openra "${DIST}/data/maps"
+fi
 
 # The content manifest: what the page downloads (through the relay, from the official mirrors) and
 # installs on the first visit, read from the mod's own content installer definitions. The relay
@@ -346,15 +356,21 @@ for v in "${WEBRA_CONTENT_RELAY}" "${WEBRA_MASTER_RELAY}"; do
 	printf '%s' "${v}" | grep -Eq '^[A-Za-z0-9._~/-]*$' || fail "relay paths must be plain paths: ${v}"
 done
 
-# Content-addressed names for the data bundles, so browsers can cache them forever
-# (deploy/Caddyfile: immutable). build.json, which names them, is always revalidated.
+# Content-addressed names for the data bundles (engine, maps), so browsers can cache them forever
+# (deploy/webra.caddy: immutable). build.json, which names them, is always revalidated.
 ENGINE_HASH="$(sha256sum "${DIST}/data/engine.bin" | cut -c 1-16)"
 mv "${DIST}/data/engine.bin" "${DIST}/data/engine.${ENGINE_HASH}.bin"
 mv "${DIST}/data/engine.json" "${DIST}/data/engine.${ENGINE_HASH}.json"
+if [ -f "${DIST}/data/maps.bin" ]; then
+	MAPS_HASH="$(sha256sum "${DIST}/data/maps.bin" | cut -c 1-16)"
+	mv "${DIST}/data/maps.bin" "${DIST}/data/maps.${MAPS_HASH}.bin"
+	mv "${DIST}/data/maps.json" "${DIST}/data/maps.${MAPS_HASH}.json"
+	MAP_DATA="data/maps.${MAPS_HASH}"
+fi
 FRAMEWORK_BYTES="$(cat "${DIST}"/_framework/*.br | wc -c)"
 
 cat > "${DIST}/data/build.json" << EOF
-{"version":"${VERSION}","commit":"${COMMIT}","dev":${DEV_BOOL},"configuration":"${CONFIGURATION}","aot":${RUN_AOT},"runtime":"${DOTNET_RUNTIME_VERSION}","mods":"${WEBRA_MODS}","content":$([ -n "${WEBRA_CONTENT_DIR:-}" ] && echo true || echo false),"proxy":"${WEBRA_PROXY_URL}","contentRelay":"${WEBRA_CONTENT_RELAY}","masterRelay":"${WEBRA_MASTER_RELAY}","engineData":"data/engine.${ENGINE_HASH}","contentManifest":"data/content-packages.json","frameworkBytes":${FRAMEWORK_BYTES}}
+{"version":"${VERSION}","commit":"${COMMIT}","dev":${DEV_BOOL},"configuration":"${CONFIGURATION}","aot":${RUN_AOT},"runtime":"${DOTNET_RUNTIME_VERSION}","mods":"${WEBRA_MODS}","content":$([ -n "${WEBRA_CONTENT_DIR:-}" ] && echo true || echo false),"proxy":"${WEBRA_PROXY_URL}","contentRelay":"${WEBRA_CONTENT_RELAY}","masterRelay":"${WEBRA_MASTER_RELAY}","engineData":"data/engine.${ENGINE_HASH}","mapData":"${MAP_DATA}","contentManifest":"data/content-packages.json","frameworkBytes":${FRAMEWORK_BYTES}}
 EOF
 
 # Precompressed copies of the data for the web server (the SDK already compressed _framework and

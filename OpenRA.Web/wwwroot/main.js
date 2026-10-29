@@ -35,6 +35,7 @@ const ui = {
 	retry: document.getElementById('retry'),
 	reset: document.getElementById('reset'),
 	fullscreen: document.getElementById('fullscreen'),
+	mapsStatus: document.getElementById('maps-status'),
 	notice: document.getElementById('notice'),
 	noticeText: document.getElementById('notice-text'),
 	noticeClose: document.getElementById('notice-close'),
@@ -85,6 +86,7 @@ const NOTICES = {
 	write: 'Saving settings, replays or maps in this browser failed; changes may be lost when the page closes.',
 	restore: 'The saved settings could not be read, so the game started with default settings. "Reset saved data" on the loading screen clears them.',
 	skipped: 'Some saved files could not be restored and were skipped.',
+	maps: 'The map pack could not be downloaded, so the map list only holds maps you downloaded before. Maps of a server you join are still downloaded from the OpenRA resource center when needed. Reload the page to try again.',
 	clock: 'This browser blocked the background clock the game uses in hidden tabs. If you switch to another tab or window during a multiplayer match, the game slows down for every player: keep this tab visible while you play.',
 };
 
@@ -162,8 +164,9 @@ function relayUrl(build) {
 	return url;
 }
 
-// Reads a packed bundle (<prefix>.json index + <prefix>.bin blob), reporting download progress.
-async function fetchBundle(prefix, label, partName) {
+// Reads a packed bundle (<prefix>.json index + <prefix>.bin blob), reporting download progress
+// to onProgress(received, total).
+async function fetchBundle(prefix, onProgress) {
 	const index = await fetch(`${prefix}.json`);
 	if (!index.ok)
 		return null;
@@ -176,7 +179,7 @@ async function fetchBundle(prefix, label, partName) {
 	const data = new Uint8Array(size);
 	const reader = response.body.getReader();
 	let received = 0;
-	progress.set(partName, label, 0, size);
+	onProgress(0, size);
 	for (;;) {
 		const { done, value } = await reader.read();
 		if (done)
@@ -185,7 +188,7 @@ async function fetchBundle(prefix, label, partName) {
 			throw new Error(`${prefix}.bin is larger than its index says`);
 		data.set(value, received);
 		received += value.length;
-		progress.set(partName, label, received, size);
+		onProgress(received, size);
 	}
 
 	if (received !== size)
@@ -226,7 +229,8 @@ function stageFiles(FS, files) {
 async function loadContent(build, store) {
 	const started = now();
 	if (build.content) {
-		const bundle = await fetchBundle('data/content', 'Game content (local test build)', 'content');
+		const bundle = await fetchBundle('data/content', (received, total) =>
+			progress.set('content', 'Game content (local test build)', received, total));
 		WebRA.load.content = { source: 'bundle', ms: now() - started };
 		return { bundle };
 	}
@@ -513,6 +517,105 @@ function createNetModule(getTransport) {
 	};
 }
 
+// The bundled maps, all but the shellmap (about 11 MB of already compressed .oramap files), come in a
+// second package that is downloaded once the main menu is up, so that the first visit does not wait
+// for them (build-web.sh, tools/split-maps.py). Until they are in, the map chooser and the mission
+// browser list only the maps this browser downloaded before (a list opened meanwhile fills in when it
+// is opened again), and a lobby or replay on a bundled map shows it as missing, with the engine's
+// usual offer to download it from the OpenRA resource center; the lobby and the replay browser pick
+// the map up by themselves once it is loaded. A status line shows the progress outside matches.
+// The maps are added to the engine's map cache a few at a time between frames, never during a match
+// or a replay.
+const MAP_LOAD_BUDGET_MS = 8;
+const MAP_DOWNLOAD_ATTEMPTS = 3;
+
+async function loadDeferredMaps(prefix, FS, host) {
+	const state = WebRA.maps = { state: 'downloading', received: 0, total: 0, maps: 0, loaded: 0, startedMs: now() };
+	const inMatch = () => {
+		try {
+			return host.WorldType() === 'Regular';
+		} catch {
+			return false;
+		}
+	};
+
+	const show = () => {
+		const busy = state.state === 'downloading' || state.state === 'loading';
+		ui.mapsStatus.hidden = !busy || inMatch();
+		ui.mapsStatus.textContent = state.state === 'downloading'
+			? `Downloading maps: ${MB(state.received)} / ${MB(state.total)} MB`
+			: `Adding maps: ${state.loaded} / ${state.maps}`;
+	};
+
+	const statusTimer = setInterval(show, 1000);
+	show();
+	try {
+		let bundle = null;
+		for (let attempt = 1; !bundle; attempt++) {
+			try {
+				bundle = await fetchBundle(prefix, (received, total) => {
+					state.received = received;
+					state.total = total;
+					show();
+				});
+				if (!bundle)
+					throw new Error(`${prefix}.json is missing`);
+			} catch (e) {
+				WebRA.errors.push(`maps (attempt ${attempt}): ${e && e.message || e}`);
+				if (attempt >= MAP_DOWNLOAD_ATTEMPTS)
+					throw e;
+				await new Promise(resolve => setTimeout(resolve, 5000 * attempt));
+			}
+		}
+
+		state.downloadedMs = now();
+		stageBundle(FS, bundle);
+
+		// Every top-level entry of a mod's map folder is a map (an .oramap file or a directory).
+		const folders = new Map();
+		for (const file of bundle.files) {
+			const m = /^(\/openra\/mods\/[^/]+\/maps)\/([^/]+)/.exec(file.path);
+			if (!m)
+				continue;
+			if (!folders.has(m[1]))
+				folders.set(m[1], new Set());
+			folders.get(m[1]).add(m[2]);
+		}
+
+		for (const [folder, maps] of folders)
+			state.maps = host.AddMaps(folder, [...maps]);
+
+		state.state = 'loading';
+		let pending = state.maps;
+		while (pending > 0) {
+			if (WebRA.phase !== 'running')
+				return;
+
+			if (inMatch()) {
+				await new Promise(resolve => setTimeout(resolve, 1000));
+				continue;
+			}
+
+			pending = host.LoadPendingMaps(MAP_LOAD_BUDGET_MS);
+			state.loaded = state.maps - pending;
+			show();
+			await new Promise(resolve => setTimeout(resolve, 16));
+		}
+
+		state.state = 'ready';
+		state.readyMs = now();
+		console.log(`[webra] ${state.maps} maps added: downloaded at ${state.downloadedMs} ms, ready at ${state.readyMs} ms`);
+	} catch (e) {
+		state.state = 'failed';
+		state.error = String(e && e.message || e);
+		console.error('[webra] maps', e);
+		notify(NOTICES.maps);
+	} finally {
+		clearInterval(statusTimer);
+		show();
+	}
+}
+
 // The fullscreen button shows outside matches (menus, lobby) while not in fullscreen. In a match:
 // Alt+Enter, or the browser's own fullscreen.
 function watchFullscreenButton() {
@@ -593,18 +696,23 @@ async function main() {
 
 	setPhase('downloading', 'Downloading');
 	const storePromise = Store.open();
-	const [runtime, engine, content, store] = await Promise.all([
+	// A replay launched at boot (dev builds: ?arg=Launch.Replay=...) needs its map before the engine
+	// starts: then the maps package is part of the loading screen, as before it was split off.
+	const mapsAtBoot = Boolean(build.mapData) && debugParams('arg').some(a => a.startsWith('Launch.Replay='));
+	const [runtime, engine, content, store, mapsBundle] = await Promise.all([
 		builder.create().then(r => {
 			WebRA.load.frameworkMs = now();
 			progress.set('framework', 'Game engine', frameworkBytes, frameworkBytes);
 			return r;
 		}),
-		fetchBundle(build.engineData || 'data/engine', 'Engine data', 'engine').then(b => {
+		fetchBundle(build.engineData || 'data/engine', (received, total) =>
+			progress.set('engine', 'Engine data', received, total)).then(b => {
 			WebRA.load.engineMs = now();
 			return b;
 		}),
 		storePromise.then(s => loadContent(build, s)),
 		storePromise,
+		mapsAtBoot ? fetchBundle(build.mapData, (received, total) => progress.set('maps', 'Maps', received, total)) : null,
 	]);
 
 	if (!engine)
@@ -623,6 +731,8 @@ async function main() {
 	let staged = stageBundle(FS, engine);
 	FS.writeFile('/openra/openra-web', '');
 	staged += content.bundle ? stageBundle(FS, content.bundle) : stageFiles(FS, content.files);
+	if (mapsBundle)
+		staged += stageBundle(FS, mapsBundle);
 
 	const support = WebRA.support = new SupportSync(FS, store, { onError: kind => notify(NOTICES[kind] || NOTICES.write) });
 	await support.restore();
@@ -659,6 +769,8 @@ async function main() {
 	canvas.focus();
 	watchFullscreenButton();
 	startFrameLoop(host);
+	if (build.mapData && !mapsBundle)
+		loadDeferredMaps(build.mapData, FS, host);
 }
 
 // Content-Security-Policy violations (deploy/webra.caddy) are recorded for tests and bug reports.
