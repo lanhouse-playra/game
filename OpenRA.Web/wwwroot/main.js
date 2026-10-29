@@ -12,6 +12,13 @@
 import { dotnet } from './_framework/dotnet.js';
 
 const params = new URLSearchParams(location.search);
+
+// Debug URL parameters (?arg=, ?mod=, ?rt=, ?env=, ?interp=, ?luatest=) work only in dev builds
+// (build-web.sh WEBRA_DEV=1, data/build.json "dev": true). On a hosted page a crafted link could
+// otherwise join the visitor to any server, change settings or disable the interpreter workaround.
+let devBuild = false;
+const debugParams = name => devBuild ? params.getAll(name) : [];
+const debugParam = name => devBuild ? params.get(name) : null;
 const canvas = document.getElementById('canvas');
 const statusLine = document.getElementById('status');
 
@@ -74,7 +81,7 @@ function bootArguments() {
 	const width = Number(params.get('w')) || window.innerWidth;
 	const height = Number(params.get('h')) || window.innerHeight;
 	const args = [
-		`Game.Mod=${params.get('mod') || 'ra'}`,
+		`Game.Mod=${debugParam('mod') || 'ra'}`,
 		'Engine.EngineDir=/openra',
 		'Engine.SupportDir=/support',
 		'Graphics.Mode=Windowed',
@@ -88,7 +95,7 @@ function bootArguments() {
 	];
 
 	// Extra engine arguments for testing, e.g. ?arg=Graphics.CapFramerate=True&arg=...
-	for (const extra of params.getAll('arg'))
+	for (const extra of debugParams('arg'))
 		args.push(extra);
 
 	return args;
@@ -130,18 +137,24 @@ function startFrameLoop(host) {
 
 async function main() {
 	setPhase('runtime');
+	const build = WebRA.build = await fetch('data/build.json').then(r => r.ok ? r.json() : {}).catch(() => ({}));
+	devBuild = build.dev === true;
+	if (!devBuild && [...params.keys()].some(k => ['arg', 'mod', 'rt', 'env', 'interp', 'luatest'].includes(k)))
+		console.warn('[webra] debug URL parameters are ignored: this is not a dev build');
+
 	// Extra Mono runtime options for experiments, e.g. ?rt=--no-jiterpreter-traces-enabled
 	// and environment variables, e.g. ?env=MONO_GC_PARAMS=nursery-size=64m
-	const runtimeOptions = params.getAll('rt');
+	const runtimeOptions = debugParams('rt');
 	let builder = dotnet
 		.withModuleConfig({ canvas })
 		.withRuntimeOptions(runtimeOptions)
 		// Mono's interpreter (.NET 10.0.14) corrupts memory during OpenRA's Lua (Eluant) callbacks when
 		// methods tier up while re-entered from native code: "memory access out of bounds" in Chrome,
 		// a renderer crash in headless Chromium. Compiling every method optimized from the start
-		// (no tiering) avoids it. Override with ?interp=<options>; see phase0-report.md.
-		.withEnvironmentVariable('MONO_INTERPRETER_OPTIONS', params.get('interp') ?? '-tiering');
-	for (const env of params.getAll('env')) {
+		// (no tiering) avoids it. Dev builds can override it with ?interp=<options>; see phase0-report.md.
+		// WebHost.Boot refuses to start a non-dev build without it (BootChecks.cs).
+		.withEnvironmentVariable('MONO_INTERPRETER_OPTIONS', debugParam('interp') ?? '-tiering');
+	for (const env of debugParams('env')) {
 		const eq = env.indexOf('=');
 		builder = builder.withEnvironmentVariable(env.substring(0, eq), env.substring(eq + 1));
 	}
@@ -152,12 +165,10 @@ async function main() {
 	WebRA.runtime = runtime;
 
 	setPhase('downloading');
-	const [engine, content, build] = await Promise.all([
+	const [engine, content] = await Promise.all([
 		fetchBundle('engine'),
 		fetchBundle('content'),
-		fetch('data/build.json').then(r => r.ok ? r.json() : {}),
 	]);
-	WebRA.build = build;
 	if (!engine)
 		throw new Error('Engine data (data/engine.json) is missing.');
 
@@ -176,8 +187,8 @@ async function main() {
 
 	WebRA.exports = host;
 	WebRA.allExports = exports;
-	if (params.has('luatest')) {
-		const r = exports.OpenRA.Web.LuaSelfTest.Run(Number(params.get('luatest')) || 3);
+	if (debugParam('luatest') !== null) {
+		const r = exports.OpenRA.Web.LuaSelfTest.Run(Number(debugParam('luatest')) || 3);
 		console.log('[webra] lua self-test:\n' + r);
 	}
 	setPhase('booting', 'loading mod and shellmap');
