@@ -172,6 +172,13 @@ namespace OpenRA
 			if (frameStart - browserNextLogic > BrowserMaxLogicTicksBehind)
 				browserNextLogic = frameStart;
 
+			// Replays: the busy time of the logic frames since the last render counts against this frame's
+			// tick time, so that a fast-forwarded replay keeps rendering about as often as Loop()'s
+			// MinReplayFps (10). Matches are unaffected.
+			var maxFrameLogicMilliseconds = (double)BrowserMaxFrameLogicMilliseconds;
+			if (kind == BrowserFrameKind.Render && logicWorld != null && logicWorld.IsReplay)
+				maxFrameLogicMilliseconds -= browserLogicFrameMilliseconds;
+
 			// Run every logic tick that is due, not just one: a browser frame can take longer than a tick.
 			var ticked = false;
 			while (frameStart >= browserNextLogic && state == RunStatus.Running)
@@ -181,7 +188,7 @@ namespace OpenRA
 				BrowserLogicTicks++;
 				ticked = true;
 
-				if (kind == BrowserFrameKind.Logic || RunTime - frameStart > BrowserMaxFrameLogicMilliseconds)
+				if (kind == BrowserFrameKind.Logic || RunTime - frameStart > maxFrameLogicMilliseconds)
 					break;
 			}
 
