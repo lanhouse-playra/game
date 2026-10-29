@@ -28,7 +28,12 @@
 #                       It is packaged into dist/data for local testing only. Never publish it.
 #   WEBRA_EM_CACHE      emscripten cache (default: OpenRA.Web/obj/emcache)
 #   WEBRA_PROXY_URL     WebSocket-to-TCP relay the page uses for game connections, written to
-#                       data/build.json, e.g. wss://relay.example.org/connect (dev builds also take ?proxy=)
+#                       data/build.json: an absolute ws:// or wss:// URL, or a path resolved against the
+#                       page's own address (ws: for http pages, wss: for https). Default "ws", i.e. the
+#                       relay at <page directory>/ws on the same host (deploy/ kit). Dev builds also take ?proxy=
+#   WEBRA_CONTENT_RELAY Path of the relay's content route (official mirror downloads), default "content"
+#   WEBRA_MASTER_RELAY  Path of the relay's master server route (versioncheck, gamenews), default "master";
+#                       "none" leaves those requests going to master.openra.net (CORS-blocked)
 #
 # Usage: ./build-web.sh            build dist/
 #        ./build-web.sh serve      serve dist/ on http://127.0.0.1:8090/
@@ -311,19 +316,49 @@ done
 )
 python3 -I "${SRC_WEB}/tools/pack-data.py" "${ENGINE_STAGE}" /openra "${DIST}/data/engine"
 
+# The content manifest: what the page downloads (through the relay, from the official mirrors) and
+# installs on the first visit, read from the mod's own content installer definitions. The relay
+# serves only the packages in this file (deploy/ copies it next to the relay).
+FIRST_MOD="$(echo ${WEBRA_MODS} | cut -d ' ' -f 1)"
+python3 -I "${SRC_WEB}/tools/content-manifest.py" "${ENGINE_STAGE}" "${FIRST_MOD}" "${DIST}/data/content-packages.json"
+
 if [ -n "${WEBRA_CONTENT_DIR:-}" ]; then
 	# Local testing only: this is copyrighted (freeware) game content. Do not publish it.
+	# deploy/deploy.sh refuses a build that contains it.
+	echo "WARNING: packaging local game content from ${WEBRA_CONTENT_DIR}: this build must not be published" >&2
 	python3 -I "${SRC_WEB}/tools/pack-data.py" "${WEBRA_CONTENT_DIR}" /support/Content/ra/v2 "${DIST}/data/content"
 fi
 
-WEBRA_PROXY_URL="${WEBRA_PROXY_URL:-}"
-if [ -n "${WEBRA_PROXY_URL}" ]; then
-	printf '%s' "${WEBRA_PROXY_URL}" | grep -Eq '^wss?://[A-Za-z0-9.:/_~%-]+$' || fail "WEBRA_PROXY_URL must be a plain ws:// or wss:// URL without query: ${WEBRA_PROXY_URL}"
+WEBRA_PROXY_URL="${WEBRA_PROXY_URL:-ws}"
+printf '%s' "${WEBRA_PROXY_URL}" | grep -Eq '^(wss?://[A-Za-z0-9.:/_~%-]+|[A-Za-z0-9._~/-]+)$' \
+	|| fail "WEBRA_PROXY_URL must be a plain ws:// or wss:// URL or a path, without query: ${WEBRA_PROXY_URL}"
+# Official builds never send game traffic in clear text: wss://, or a path (the page resolves it to
+# wss: on an https page and refuses ws: off loopback), or ws:// to loopback for local tests.
+if [ "${WEBRA_DEV}" != "1" ]; then
+	printf '%s' "${WEBRA_PROXY_URL}" | grep -Eq '^(wss://|ws://(127\.0\.0\.1|localhost|\[::1\])[:/]|[A-Za-z0-9._~/-]+$)' \
+		|| fail "official builds need a wss:// relay (or a same-origin path); ws:// is only accepted for loopback: ${WEBRA_PROXY_URL}"
 fi
+WEBRA_CONTENT_RELAY="${WEBRA_CONTENT_RELAY:-content}"
+WEBRA_MASTER_RELAY="${WEBRA_MASTER_RELAY:-master}"
+[ "${WEBRA_MASTER_RELAY}" = "none" ] && WEBRA_MASTER_RELAY=""
+for v in "${WEBRA_CONTENT_RELAY}" "${WEBRA_MASTER_RELAY}"; do
+	printf '%s' "${v}" | grep -Eq '^[A-Za-z0-9._~/-]*$' || fail "relay paths must be plain paths: ${v}"
+done
+
+# Content-addressed names for the data bundles, so browsers can cache them forever
+# (deploy/Caddyfile: immutable). build.json, which names them, is always revalidated.
+ENGINE_HASH="$(sha256sum "${DIST}/data/engine.bin" | cut -c 1-16)"
+mv "${DIST}/data/engine.bin" "${DIST}/data/engine.${ENGINE_HASH}.bin"
+mv "${DIST}/data/engine.json" "${DIST}/data/engine.${ENGINE_HASH}.json"
+FRAMEWORK_BYTES="$(cat "${DIST}"/_framework/*.br | wc -c)"
 
 cat > "${DIST}/data/build.json" << EOF
-{"version":"${VERSION}","commit":"${COMMIT}","dev":${DEV_BOOL},"configuration":"${CONFIGURATION}","aot":${RUN_AOT},"runtime":"${DOTNET_RUNTIME_VERSION}","mods":"${WEBRA_MODS}","content":$([ -n "${WEBRA_CONTENT_DIR:-}" ] && echo true || echo false),"proxy":"${WEBRA_PROXY_URL}"}
+{"version":"${VERSION}","commit":"${COMMIT}","dev":${DEV_BOOL},"configuration":"${CONFIGURATION}","aot":${RUN_AOT},"runtime":"${DOTNET_RUNTIME_VERSION}","mods":"${WEBRA_MODS}","content":$([ -n "${WEBRA_CONTENT_DIR:-}" ] && echo true || echo false),"proxy":"${WEBRA_PROXY_URL}","contentRelay":"${WEBRA_CONTENT_RELAY}","masterRelay":"${WEBRA_MASTER_RELAY}","engineData":"data/engine.${ENGINE_HASH}","contentManifest":"data/content-packages.json","frameworkBytes":${FRAMEWORK_BYTES}}
 EOF
+
+# Precompressed copies of the data for the web server (the SDK already compressed _framework and
+# the page's own files). deploy/Caddyfile serves them with "precompressed zstd br gzip".
+python3 -I "${SRC_WEB}/tools/precompress.py" "${DIST}/data"
 
 echo "Built ${VERSION} (${COMMIT}, dev=${DEV_BOOL}, AOT=${RUN_AOT}) into ${DIST}"
 du -sh "${DIST}"
