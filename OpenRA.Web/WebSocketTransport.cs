@@ -90,9 +90,11 @@ namespace OpenRA.Web
 		/// <summary>Builds the relay URL for a game server: {proxy}?target={host}:{port}.</summary>
 		public static string RelayUrl(string proxy, DnsEndPoint endpoint)
 		{
+			// IP literals in canonical form: .NET also parses "127.1" or a bare number as IPv4, which the
+			// relay would treat as a host name.
 			var host = endpoint.Host;
-			if (IPAddress.TryParse(host, out var address) && address.AddressFamily == AddressFamily.InterNetworkV6)
-				host = "[" + address + "]";
+			if (IPAddress.TryParse(host, out var address))
+				host = address.AddressFamily == AddressFamily.InterNetworkV6 ? "[" + address + "]" : address.ToString();
 
 			var separator = proxy.Contains('?') ? '&' : '?';
 			return proxy + separator + "target=" + Uri.EscapeDataString(host + ":" + endpoint.Port);
@@ -138,7 +140,25 @@ namespace OpenRA.Web
 			if (!Sockets.Remove(id, out var socket))
 				return;
 
-			Dispatch(socket, s => s.Listener.OnClose($"WebSocket closed (code {code}{(string.IsNullOrEmpty(reason) ? "" : ", " + reason)})"));
+			Dispatch(socket, s => s.Listener.OnClose($"WebSocket closed (code {code}{(string.IsNullOrEmpty(reason) ? "" : ", " + reason)})", CloseMessage(code)));
+		}
+
+		/// <summary>
+		/// The relay accepts the WebSocket before it checks the target and connects, and reports a
+		/// refusal with these close codes (source/proxy README), because a page cannot read the HTTP
+		/// status of a failed WebSocket upgrade. Other codes keep the engine's generic message.
+		/// </summary>
+		public static string CloseMessage(int code)
+		{
+			return code switch
+			{
+				4400 => "Invalid server address",
+				4403 => "The web version can only join servers on the public server list",
+				4429 => "Too many connection attempts, try again in a moment",
+				4502 => "The server did not answer",
+				4503 => "The relay is busy, try again later",
+				_ => null,
+			};
 		}
 
 		static void Dispatch(Socket socket, Action<Socket> action)
