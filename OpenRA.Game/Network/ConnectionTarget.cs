@@ -37,12 +37,20 @@ namespace OpenRA.Network
 				throw new ArgumentException("ConnectionTarget must have at least one address.");
 		}
 
+		/// <summary>The unresolved endpoints, in order of preference.</summary>
+		public IReadOnlyList<DnsEndPoint> EndPoints => endpoints;
+
 		public IEnumerable<IPEndPoint> GetConnectEndPoints()
 		{
 			return endpoints.SelectMany(e =>
 			{
 				try
 				{
+					// The browser has no name resolution (Dns throws PlatformNotSupportedException),
+					// but address literals need none.
+					if (OperatingSystem.IsBrowser() && IPAddress.TryParse(e.Host, out var address))
+						return [new IPEndPoint(address, e.Port)];
+
 					return Dns.GetHostAddresses(e.Host)
 						.Select(a => new IPEndPoint(a, e.Port));
 				}
