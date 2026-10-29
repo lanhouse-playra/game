@@ -46,12 +46,16 @@ namespace OpenRA
 			Channel = System.Threading.Channels.Channel.CreateUnbounded<ChannelData>();
 			ChannelWriter = Channel.Writer;
 
-			Thread = new Thread(DoWork)
+			// Browser (WebAssembly) builds are single-threaded: Write() logs synchronously instead.
+			if (!OperatingSystem.IsBrowser())
 			{
-				Name = "OpenRA Logging Thread"
-			};
+				Thread = new Thread(DoWork)
+				{
+					Name = "OpenRA Logging Thread"
+				};
 
-			Thread.Start(CancellationToken.Token);
+				Thread.Start(CancellationToken.Token);
+			}
 
 			Timer = new Timer(FlushToDisk, CancellationToken.Token, FlushInterval, Timeout.InfiniteTimeSpan);
 		}
@@ -159,19 +163,44 @@ namespace OpenRA
 
 		public static void Write(string channelName, string value)
 		{
-			ChannelWriter.TryWrite(new ChannelData(channelName, value));
+			if (OperatingSystem.IsBrowser())
+				WriteBrowser(new ChannelData(channelName, value));
+			else
+				ChannelWriter.TryWrite(new ChannelData(channelName, value));
 		}
 
 		public static void Write(string channelName, Exception e)
 		{
-			ChannelWriter.TryWrite(new ChannelData(channelName, $"{e.Message}{Environment.NewLine}{e.StackTrace}"));
+			var data = new ChannelData(channelName, $"{e.Message}{Environment.NewLine}{e.StackTrace}");
+			if (OperatingSystem.IsBrowser())
+				WriteBrowser(data);
+			else
+				ChannelWriter.TryWrite(data);
+		}
+
+		static void WriteBrowser(ChannelData item)
+		{
+			// Also echo to the browser console, where the log files are not visible.
+			Console.WriteLine($"[{item.Channel}] {item.Text}");
+
+			try
+			{
+				WriteValue(item);
+			}
+			catch (Exception e)
+			{
+				Console.WriteLine($"Failed to write to log channel {item.Channel}: {e.Message}");
+			}
 		}
 
 		public static void Dispose()
 		{
 			CancellationToken.Cancel();
 			Timer.Dispose();
-			Thread.Join();
+			if (Thread != null)
+				Thread.Join();
+			else
+				FlushToDisk();
 		}
 	}
 }

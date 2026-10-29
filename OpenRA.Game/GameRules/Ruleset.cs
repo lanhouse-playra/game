@@ -146,7 +146,8 @@ namespace OpenRA
 				ruleset = new Ruleset(actors, weapons, voices, notifications, music, null, modelSequences);
 			}
 
-			if (modData.IsOnMainThread)
+			// The browser (WebAssembly) build is single-threaded: the task could only run after this returns.
+			if (modData.IsOnMainThread && !OperatingSystem.IsBrowser())
 			{
 				modData.HandleLoadingProgress();
 
@@ -208,7 +209,8 @@ namespace OpenRA
 				ruleset = new Ruleset(actors, weapons, voices, notifications, music, terrainInfo, modelSequences);
 			}
 
-			if (modData.IsOnMainThread)
+			// The browser (WebAssembly) build is single-threaded: the task could only run after this returns.
+			if (modData.IsOnMainThread && !OperatingSystem.IsBrowser())
 			{
 				modData.HandleLoadingProgress();
 

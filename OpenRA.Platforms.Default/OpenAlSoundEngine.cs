@@ -655,6 +655,11 @@ namespace OpenRA.Platforms.Default
 				cts.Cancel();
 			}
 
+			// The browser (WebAssembly) build is single-threaded: the task can only observe the
+			// cancellation and clean up after this returns, so waiting for it would never finish.
+			if (OperatingSystem.IsBrowser())
+				return;
+
 			try
 			{
 				playTask.Wait();
