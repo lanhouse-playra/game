@@ -96,7 +96,13 @@ static const uint8_t *convert_bgra(const void *pixels, GLsizei width, GLsizei he
 	return dst;
 }
 
-/* Per texture name: bit 0 = generated and not deleted, bit 1 = bound at least once. */
+/* Per texture name: bit 0 = generated and not deleted, bit 1 = bound at least once.
+ *
+ * WebGL context loss: WebGL's isTexture answers false for every texture of a lost context, this table
+ * does not know about the loss and keeps answering true. Harmless today: the page does not handle
+ * webglcontextlost, the context is never restored, and the engine's deferred GL error check reads
+ * CONTEXT_LOST_WEBGL and stops the page. Whoever adds context restoration must also clear this
+ * table (every texture name of the old context is gone). */
 #define TEXTURE_LIVE 1
 #define TEXTURE_BOUND 2
 static uint8_t *texture_state = NULL;
