@@ -9,6 +9,7 @@ OpenRA.Game/Game.cs
 OpenRA.Game/GameRules/Ruleset.cs
 OpenRA.Game/Map/MapCache.cs
 OpenRA.Game/Map/MapDirectoryTracker.cs
+OpenRA.Game/Map/MapPreview.cs
 OpenRA.Game/Network/Connection.Browser.cs
 OpenRA.Game/Network/Connection.cs
 OpenRA.Game/Network/ConnectionTarget.cs
