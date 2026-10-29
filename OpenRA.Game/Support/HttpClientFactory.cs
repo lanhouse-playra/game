@@ -28,6 +28,10 @@ namespace OpenRA.Support
 
 		static HttpMessageHandler GetHandler()
 		{
+			// SocketsHttpHandler is not available in the browser; HttpClientHandler maps to fetch() there.
+			if (OperatingSystem.IsBrowser())
+				return new HttpClientHandler();
+
 			return new SocketsHttpHandler
 			{
 				// https://github.com/dotnet/corefx/issues/26895
