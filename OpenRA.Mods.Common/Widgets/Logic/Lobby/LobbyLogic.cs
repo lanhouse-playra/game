@@ -972,8 +972,10 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 				string secret = null;
 				if (orderManager.LobbyInfo.GlobalSettings.Dedicated)
 				{
-					var endpoint = CurrentServerSettings.Target.GetConnectEndPoints().First();
-					secret = $"{endpoint.Address}|{endpoint.Port}";
+					// The address may not resolve (e.g. a host name in the browser, which has no DNS).
+					var endpoint = CurrentServerSettings.Target.GetConnectEndPoints().FirstOrDefault();
+					if (endpoint != null)
+						secret = $"{endpoint.Address}|{endpoint.Port}";
 				}
 
 				var state = skirmishMode ? DiscordState.InSkirmishLobby : DiscordState.InMultiplayerLobby;
