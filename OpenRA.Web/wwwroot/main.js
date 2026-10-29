@@ -12,7 +12,7 @@
 // body[data-phase] for tests.
 
 import { dotnet } from './_framework/dotnet.js';
-import { Store, SupportSync } from './webra-store.js';
+import { Store, SupportSync, resetSavedData } from './webra-store.js';
 import { ensureContent } from './webra-content.js';
 import * as page from './webra-page.js';
 
@@ -33,7 +33,11 @@ const ui = {
 	note: document.getElementById('note'),
 	error: document.getElementById('error'),
 	retry: document.getElementById('retry'),
+	reset: document.getElementById('reset'),
 	fullscreen: document.getElementById('fullscreen'),
+	notice: document.getElementById('notice'),
+	noticeText: document.getElementById('notice-text'),
+	noticeClose: document.getElementById('notice-close'),
 };
 
 const WebRA = window.WebRA = {
@@ -41,6 +45,7 @@ const WebRA = window.WebRA = {
 	timings: {},
 	load: {},
 	errors: [],
+	notices: [],
 	host: null,
 	diagnostics: (reset = false) => WebRA.host ? JSON.parse(WebRA.host.Diagnostics(reset)) : null,
 };
@@ -61,6 +66,47 @@ function fail(error) {
 	WebRA.errors.push(String(error && error.stack || error));
 	setPhase('error');
 	ui.error.textContent = String(error && error.message || error);
+}
+
+// A message for the player that stays visible over the game until closed (storage full, background
+// clock blocked). Each text is shown once per page load.
+function notify(text) {
+	if (WebRA.notices.includes(text))
+		return;
+
+	console.warn(`[webra] notice: ${text}`);
+	WebRA.notices.push(text);
+	ui.noticeText.textContent = text;
+	ui.notice.hidden = false;
+}
+
+const NOTICES = {
+	quota: 'The browser storage for this site is full, so settings, replays and maps are not being saved any more. Free some space (for example, delete old replays in the game) or use "Reset saved data" on the loading screen.',
+	write: 'Saving settings, replays or maps in this browser failed; changes may be lost when the page closes.',
+	restore: 'The saved settings could not be read, so the game started with default settings. "Reset saved data" on the loading screen clears them.',
+	skipped: 'Some saved files could not be restored and were skipped.',
+	clock: 'This browser blocked the background clock the game uses in hidden tabs. If you switch to another tab or window during a multiplayer match, the game slows down for every player: keep this tab visible while you play.',
+};
+
+// Reset saved data: deletes the saved support directory (settings, profile, replays, maps), keeps
+// the game content, reloads. The way out when saved data keeps the page from starting.
+async function resetSaved() {
+	if (!confirm('Delete the settings, player profile, replays and downloaded maps this site saved in this browser? The game content stays.'))
+		return;
+
+	if (WebRA.support)
+		WebRA.support.stop();
+
+	try {
+		await resetSavedData();
+		WebRA.resetDone = true;
+	} catch (e) {
+		WebRA.errors.push(`reset: ${e}`);
+		alert(`Resetting the saved data failed: ${e && e.message || e}. Clear this site's data in the browser settings instead.`);
+		return;
+	}
+
+	location.reload();
 }
 
 // Lets the page repaint (status text) before a long synchronous call.
@@ -253,8 +299,10 @@ function bootArguments(size, proxy) {
 // The worker is created from a blob: URL, so a Content-Security-Policy must allow worker-src blob:.
 const HIDDEN_FRAME_INTERVAL_MS = 10;
 
-// If the worker cannot run (CSP, browser policy), a main-thread timer chain takes over: throttled
-// while hidden, which can stall the match, but better than no frames at all.
+// If the worker cannot run (CSP, browser policy), a main-thread timer chain takes over. Browsers
+// throttle it in hidden tabs: measured in Chrome, about one wake-up and so one logic tick per second
+// instead of 25. The engine does not catch up on missed ticks (Game.MaxLogicTicksBehind, 250 ms), so
+// a hidden tab slows a multiplayer match down for everyone: the player is told when this happens.
 function createTimerClock(onTick) {
 	let timer = 0;
 	let interval = 0;
@@ -289,6 +337,7 @@ function createWorkerClock(onTick) {
 			return;
 		console.warn(`[webra] hidden-tab clock worker unavailable (${reason}); using a timer, which browsers throttle in hidden tabs`);
 		WebRA.clockFallback = String(reason);
+		notify(NOTICES.clock);
 		fallback = createTimerClock(onTick);
 		if (running)
 			fallback.start(running);
@@ -471,6 +520,10 @@ function watchFullscreenButton() {
 async function main() {
 	setPhase('loading', 'Starting');
 	ui.retry.addEventListener('click', () => location.reload());
+	ui.reset.addEventListener('click', () => resetSaved());
+	ui.noticeClose.addEventListener('click', () => {
+		ui.notice.hidden = true;
+	});
 
 	const build = WebRA.build = await fetch('data/build.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
 	devBuild = build.dev === true;
@@ -485,7 +538,10 @@ async function main() {
 	page.captureKeys({ isActive: () => WebRA.phase === 'running', keepDevTools: devBuild });
 	page.clampMouseAtEdges(canvas, () => WebRA.phase === 'running');
 
-	const size = WebRA.renderSize = page.renderSize(Number(params.get('w')) || window.innerWidth, Number(params.get('h')) || window.innerHeight);
+	// ?w= and ?h= (render size for tests) are clamped: a crafted link must not make the tab
+	// allocate a huge canvas.
+	const sizeParam = name => Math.min(4096, Number(params.get(name)) || 0);
+	const size = WebRA.renderSize = page.renderSize(sizeParam('w') || window.innerWidth, sizeParam('h') || window.innerHeight);
 	page.fitCanvas(canvas, size);
 	const proxy = relayUrl(build);
 
@@ -548,8 +604,10 @@ async function main() {
 	FS.writeFile('/openra/openra-web', '');
 	staged += content.bundle ? stageBundle(FS, content.bundle) : stageFiles(FS, content.files);
 
-	const support = WebRA.support = new SupportSync(FS, store);
+	const support = WebRA.support = new SupportSync(FS, store, { onError: kind => notify(NOTICES[kind] || NOTICES.write) });
 	await support.restore();
+	if (support.stats.skipped.length)
+		notify(NOTICES.skipped);
 	WebRA.stagedFiles = staged;
 	WebRA.load.restoredSupportFiles = support.stats.restoredFiles;
 
