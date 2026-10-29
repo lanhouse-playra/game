@@ -517,11 +517,12 @@ function createNetModule(getTransport) {
 	};
 }
 
-// The bundled maps, all but the shellmap (about 11 MB of already compressed .oramap files), come in a
+// The bundled maps, all but the shellmap and one small lobby map (10.8 MB, 2.4 MB compressed), come in a
 // second package that is downloaded once the main menu is up, so that the first visit does not wait
-// for them (build-web.sh, tools/split-maps.py). Until they are in, the map chooser and the mission
-// browser list only the maps this browser downloaded before (a list opened meanwhile fills in when it
-// is opened again), and a lobby or replay on a bundled map shows it as missing: the engine searches
+// for them (build-web.sh, tools/split-maps.py). Until they are in, the map chooser lists only that one
+// map and the maps this browser downloaded before, the mission browser is empty (a list opened
+// meanwhile fills in when it is opened again), and a lobby or replay on a bundled map shows it as
+// missing: the engine searches
 // the OpenRA resource center for it, which does not carry the bundled maps of playtest releases. The
 // lobby and the replay browser pick the map up by themselves once it is loaded. A status line shows
 // the progress outside matches.
@@ -543,9 +544,10 @@ async function loadDeferredMaps(prefix, FS, host) {
 	const show = () => {
 		const busy = state.state === 'downloading' || state.state === 'loading';
 		ui.mapsStatus.hidden = !busy || inMatch();
-		ui.mapsStatus.textContent = state.state === 'downloading'
-			? `Downloading maps: ${MB(state.received)} / ${MB(state.total)} MB`
-			: `Adding maps: ${state.loaded} / ${state.maps}`;
+		if (state.state === 'loading')
+			ui.mapsStatus.textContent = `Adding maps: ${state.loaded} / ${state.maps}`;
+		else
+			ui.mapsStatus.textContent = state.total ? `Downloading maps: ${MB(state.received)} / ${MB(state.total)} MB` : 'Downloading maps';
 	};
 
 	const statusTimer = setInterval(show, 1000);

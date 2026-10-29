@@ -10,9 +10,13 @@
 
 usage: split-maps.py <engine stage dir> <maps stage dir> <mod>...
 
-The page loads the engine data before the menu and the maps package after it. The menu needs only
-the shellmaps (map.yaml "Visibility" includes Shellmap): they stay in mods/<mod>/maps of the engine
-tree. Every other map (an .oramap file or a map directory) moves to the same relative path under
+The page loads the engine data before the menu and the maps package after it. Two kinds of map stay
+in mods/<mod>/maps of the engine tree:
+  - the shellmaps (map.yaml "Visibility" includes Shellmap), the menu's background;
+  - the smallest map shown in the lobby (Visibility includes Lobby; about 6 KB for ra). The engine
+    assumes a mod always has one: the map chooser throws when neither its system nor its user tab
+    has a map to select, and the main menu disables skirmish.
+Every other map (an .oramap file or a map directory) moves to the same relative path under
 <maps stage dir>, so both packages unpack into the same folder of the browser's file system and the
 engine sees byte-identical maps once both are there.
 """
@@ -36,9 +40,17 @@ def map_yaml(path):
         return z.read("map.yaml").decode("utf-8-sig")
 
 
-def is_shellmap(path):
+def visibility(path):
+    # MapPreview's default when map.yaml has no Visibility.
     match = VISIBILITY.search(map_yaml(path))
-    return match is not None and "Shellmap" in [v.strip() for v in match.group(1).split(",")]
+    return [v.strip() for v in match.group(1).split(",")] if match else ["Lobby"]
+
+
+def size(path):
+    if not os.path.isdir(path):
+        return os.path.getsize(path)
+
+    return sum(os.path.getsize(os.path.join(root, name)) for root, _, names in os.walk(path) for name in names)
 
 
 def main():
@@ -53,23 +65,27 @@ def main():
             continue
 
         target = os.path.join(maps, "mods", mod, "maps")
-        for name in sorted(os.listdir(folder)):
-            path = os.path.join(folder, name)
-            if not (os.path.isdir(path) or name.endswith(".oramap")):
-                continue
+        entries = [n for n in sorted(os.listdir(folder)) if os.path.isdir(os.path.join(folder, n)) or n.endswith(".oramap")]
+        shown = {n: visibility(os.path.join(folder, n)) for n in entries}
+        lobby = sorted((size(os.path.join(folder, n)), n) for n in entries if "Lobby" in shown[n])
+        keep = {n for n in entries if "Shellmap" in shown[n]}
+        if not keep and entries:
+            sys.exit(f"split-maps.py: no shellmap in mods/{mod}/maps; the main menu needs one in the engine data")
 
-            if is_shellmap(path):
+        if lobby:
+            keep.add(lobby[0][1])
+
+        for name in entries:
+            if name in keep:
+                print(f"split-maps.py: mods/{mod}/maps/{name} stays in the engine data")
                 kept += 1
                 continue
 
             os.makedirs(target, exist_ok=True)
-            shutil.move(path, os.path.join(target, name))
+            shutil.move(os.path.join(folder, name), os.path.join(target, name))
             moved += 1
 
-    if kept == 0 and moved > 0:
-        sys.exit("split-maps.py: no shellmap found; the main menu needs one in the engine data")
-
-    print(f"split-maps.py: {kept} shellmap(s) stay in the engine data, {moved} maps go to the maps package")
+    print(f"split-maps.py: {kept} maps stay in the engine data, {moved} go to the maps package")
 
 
 if __name__ == "__main__":
