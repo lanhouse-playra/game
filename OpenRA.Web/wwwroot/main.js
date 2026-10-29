@@ -289,7 +289,8 @@ function bootArguments(size, proxy) {
 
 // Frame scheduling.
 //
-// Visible page: one engine frame (logic ticks that are due, then one render) per animation frame.
+// Visible page: one engine frame (logic ticks that are due, then one render) per animation frame,
+// plus logic-only frames from the clock below in between.
 //
 // Hidden page: requestAnimationFrame stops, and main-thread timers are throttled to about one wake-up
 // per second (and to one per minute after five minutes in Chrome). In a lockstep multiplayer game a
@@ -298,6 +299,13 @@ function bootArguments(size, proxy) {
 // worker's messages are ordinary tasks on the main thread, which hidden pages still run promptly.
 // The worker is created from a blob: URL, so a Content-Security-Policy must allow worker-src blob:.
 const HIDDEN_FRAME_INTERVAL_MS = 10;
+
+// Visible page: the same clock also runs logic-only frames (host.LogicFrame) between animation
+// frames. An animation frame comes only after the previous render, so with a slow GPU the logic ticks,
+// and with them the network (orders, acks, ping replies), would wait for the render: every other
+// player would feel this browser's frame time as latency. The engine runs a tick only when it is due
+// (every 40 ms at normal speed), so most of these calls return at once.
+const VISIBLE_LOGIC_INTERVAL_MS = 5;
 
 // If the worker cannot run (CSP, browser policy), a main-thread timer chain takes over. Browsers
 // throttle it in hidden tabs: measured in Chrome, about one wake-up and so one logic tick per second
@@ -388,14 +396,15 @@ function createWorkerClock(onTick) {
 function startFrameLoop(host) {
 	let stopped = false;
 	let rafPending = false;
-	const stats = WebRA.frameStats = { visibleFrames: 0, hiddenFrames: 0, hiddenTicksIgnored: 0, visibilityChanges: 0 };
+	const stats = WebRA.frameStats = { visibleFrames: 0, logicFrames: 0, hiddenFrames: 0, visibilityChanges: 0 };
 
+	// render: true (animation frame), false (hidden page), 'logic' (visible page, between animation frames)
 	const runFrame = render => {
 		if (stopped)
 			return;
 
 		try {
-			if (!host.Frame(render)) {
+			if (!(render === 'logic' ? host.LogicFrame() : host.Frame(render))) {
 				stopped = true;
 				clock.stop();
 				setPhase('exited');
@@ -418,14 +427,14 @@ function startFrameLoop(host) {
 	};
 
 	const clock = WebRA.clock = createWorkerClock(() => {
-		// The clock only runs while hidden; ignore messages still queued after the page became visible.
-		if (!document.hidden) {
-			stats.hiddenTicksIgnored++;
-			return;
+		// Messages still queued from before a visibility change run as the new state's frame kind.
+		if (document.hidden) {
+			stats.hiddenFrames++;
+			runFrame(false);
+		} else {
+			stats.logicFrames++;
+			runFrame('logic');
 		}
-
-		stats.hiddenFrames++;
-		runFrame(false);
 	});
 
 	const requestFrame = () => {
@@ -443,7 +452,7 @@ function startFrameLoop(host) {
 		if (document.hidden)
 			clock.start(HIDDEN_FRAME_INTERVAL_MS);
 		else {
-			clock.stop();
+			clock.start(VISIBLE_LOGIC_INTERVAL_MS);
 			requestFrame();
 		}
 	};
@@ -451,8 +460,10 @@ function startFrameLoop(host) {
 	document.addEventListener('visibilitychange', onVisibility);
 	if (document.hidden)
 		clock.start(HIDDEN_FRAME_INTERVAL_MS);
-	else
+	else {
+		clock.start(VISIBLE_LOGIC_INTERVAL_MS);
 		requestFrame();
+	}
 }
 
 // Game connections: the engine opens a WebSocket to the WebSocket-to-TCP relay through these
