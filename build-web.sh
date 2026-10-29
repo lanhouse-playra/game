@@ -1,16 +1,28 @@
 #!/bin/sh
 # Builds the browser (WebAssembly) version of OpenRA into OpenRA.Web/dist/.
 #
-# Requirements: the .NET 10 SDK with the wasm-tools workload on PATH (dotnet), python3, curl, git.
-# Everything else (Lua 5.1.5, the OpenRA Eluant sources, emscripten's SDL2/FreeType ports) is
-# downloaded into OpenRA.Web/obj/ on the first run.
+# Requirements: the .NET SDK and wasm-tools workload versions pinned below (dotnet on PATH),
+# python3, curl, git, patch. Everything else (Lua 5.1.5, the OpenRA Eluant sources, emscripten's
+# SDL2/FreeType ports) is downloaded into OpenRA.Web/obj/ on the first run and verified.
+#
+# Two kinds of build:
+#
+#   official (default)  Stamps the upstream release version (UPSTREAM_TAG below) into VERSION and
+#                       every mod.yaml. Game servers admit a client by its mod and version string
+#                       alone, so this build refuses to run unless the working tree is clean, HEAD
+#                       is based on UPSTREAM_TAG, the mod data equals the tag and every other changed
+#                       upstream file is listed in OpenRA.Web/upstream-patches.txt. It compiles and
+#                       packages a "git archive HEAD" export, never the working tree. The page ignores
+#                       debug URL parameters.
+#   dev (WEBRA_DEV=1)   Builds the working tree as it is and stamps {DEV_VERSION}, which no release
+#                       server accepts. The page honours the debug URL parameters (?arg=, ?env=, ?rt=,
+#                       ?interp=, ?luatest=).
 #
 # Environment:
 #   CONFIGURATION       Release (default) or Debug
+#   WEBRA_DEV           1 for a dev build (see above)
 #   WEBRA_AOT           1 to build with Mono AOT (RunAOTCompilation), default 0
 #   WEBRA_AOT_SERIAL    true (default) compiles assemblies one at a time; parallel AOT needs > 6 GB
-#   WEBRA_VERSION       version string stamped into VERSION and mod.yaml
-#                       (default: the nearest git tag, which must equal the server version)
 #   WEBRA_MODS          mods to package (default: "ra")
 #   WEBRA_CONTENT_DIR   optional local directory with the mod content (e.g. .../Content/ra/v2).
 #                       It is packaged into dist/data for local testing only. Never publish it.
@@ -33,28 +45,89 @@ if [ "${1:-}" = "serve" ]; then
 	exec python3 -I "${WEB}/tools/serve.py" "${DIST}" "${WEBRA_PORT:-8090}"
 fi
 
-CONFIGURATION="${CONFIGURATION:-Release}"
-WEBRA_AOT="${WEBRA_AOT:-0}"
-WEBRA_MODS="${WEBRA_MODS:-ra}"
-WEBRA_EM_CACHE="${WEBRA_EM_CACHE:-${WEB}/obj/emcache}"
-WEBRA_VERSION="${WEBRA_VERSION:-$(git -C "${ROOT}" describe --tags --abbrev=0 2>/dev/null || echo "{DEV_VERSION}")}"
+fail()
+{
+	echo "build-web.sh: $*" >&2
+	exit 1
+}
+
+# The upstream release this branch is based on. Official builds carry exactly this version string.
+UPSTREAM_TAG="playtest-20261026"
+
+# Pinned toolchain. The Mono runtime is part of the simulation's determinism (numeric conversions,
+# the interpreter bug worked around in main.js with MONO_INTERPRETER_OPTIONS=-tiering), so a different
+# SDK, workload or runtime fails the build. Changing these requires rerunning the numeric conformance
+# corpus (OpenRA.Web/tools/conformance.sh) on interpreter and AOT builds and the boot self-test.
+DOTNET_SDK_VERSION="10.0.403"        # also OpenRA.Web/global.json
+DOTNET_RUNTIME_VERSION="10.0.14"     # Microsoft.NETCore.App.Runtime.Mono.browser-wasm and the workload packs
+WASM_WORKLOAD_MANIFEST="10.0.114"    # microsoft.net.workload.mono.toolchain.current
+EMSCRIPTEN_VERSION="3.1.56"
 
 LUA_VERSION="5.1.5"
 LUA_SHA256="2640fc56a795f29d28ef15e13c34a47e223960b0240e8cb0a82d9b0738695333"
-ELUANT_TAG="1.0.23" # must match the OpenRA-Eluant package referenced by OpenRA.Game
 
-command -v dotnet > /dev/null || { echo "dotnet not found on PATH"; exit 1; }
+CONFIGURATION="${CONFIGURATION:-Release}"
+WEBRA_DEV="${WEBRA_DEV:-0}"
+WEBRA_AOT="${WEBRA_AOT:-0}"
+WEBRA_MODS="${WEBRA_MODS:-ra}"
+WEBRA_EM_CACHE="${WEBRA_EM_CACHE:-${WEB}/obj/emcache}"
+
+[ -z "${WEBRA_VERSION:-}" ] || fail "WEBRA_VERSION is not supported: official builds stamp ${UPSTREAM_TAG}, dev builds (WEBRA_DEV=1) {DEV_VERSION}."
+
+mkdir -p "${OBJ}" "${NATIVE}" "${DEPS}"
+
+echo "== Sources"
+COMMIT="$(git -C "${ROOT}" rev-parse HEAD 2> /dev/null || echo unknown)"
+if [ "${WEBRA_DEV}" = "1" ]; then
+	VERSION="{DEV_VERSION}"
+	SRC="${ROOT}"
+	[ -z "$(git -C "${ROOT}" status --porcelain 2> /dev/null)" ] || COMMIT="${COMMIT}-dirty"
+	echo "Dev build of the working tree (${COMMIT}), version ${VERSION}"
+else
+	git -C "${ROOT}" rev-parse --git-dir > /dev/null 2>&1 || fail "official builds need a git checkout (or use WEBRA_DEV=1)"
+	DIRTY="$(git -C "${ROOT}" status --porcelain --untracked-files=normal)"
+	[ -z "${DIRTY}" ] || fail "the working tree has uncommitted or untracked changes; an official build must match a commit (commit them, or use WEBRA_DEV=1):
+${DIRTY}"
+	git -C "${ROOT}" rev-parse -q --verify "refs/tags/${UPSTREAM_TAG}^{commit}" > /dev/null || fail "tag ${UPSTREAM_TAG} not found (git fetch --tags upstream)"
+	git -C "${ROOT}" merge-base --is-ancestor "${UPSTREAM_TAG}" HEAD || fail "HEAD is not based on ${UPSTREAM_TAG}"
+	git -C "${ROOT}" diff --quiet "${UPSTREAM_TAG}" HEAD -- mods glsl "global mix database.dat" \
+		|| fail "mod data differs from ${UPSTREAM_TAG}; servers would accept a client running other rules:
+$(git -C "${ROOT}" diff --stat "${UPSTREAM_TAG}" HEAD -- mods glsl "global mix database.dat")"
+	grep -v '^#' "${WEB}/upstream-patches.txt" | sed '/^[[:space:]]*$/d' > "${OBJ}/upstream-patches.list"
+	UNEXPECTED="$(git -C "${ROOT}" diff --name-only "${UPSTREAM_TAG}" HEAD | grep -v '^OpenRA\.Web/' | grep -vxF -f "${OBJ}/upstream-patches.list" || true)"
+	[ -z "${UNEXPECTED}" ] || fail "files changed since ${UPSTREAM_TAG} that are not in OpenRA.Web/upstream-patches.txt:
+${UNEXPECTED}"
+
+	VERSION="${UPSTREAM_TAG}"
+	SRC="${OBJ}/src"
+	rm -rf "${SRC}"
+	mkdir -p "${SRC}"
+	git -C "${ROOT}" archive --format=tar HEAD | tar -x -C "${SRC}"
+	echo "Official build of ${COMMIT} (git archive), version ${VERSION}"
+fi
+SRC_WEB="${SRC}/OpenRA.Web"
+
+echo "== Toolchain"
+command -v dotnet > /dev/null || fail "dotnet not found on PATH"
 DOTNET_ROOT="${DOTNET_ROOT:-$(dirname "$(readlink -f "$(command -v dotnet)")")}"
+# OpenRA.Web/global.json pins the SDK; it applies to dotnet commands run from that directory.
+cd "${SRC_WEB}"
+SDK="$(dotnet --version 2> /dev/null || true)"
+[ "${SDK}" = "${DOTNET_SDK_VERSION}" ] || fail "the .NET SDK ${DOTNET_SDK_VERSION} pinned by OpenRA.Web/global.json is required (got '${SDK}')"
+[ -d "${DOTNET_ROOT}/packs/Microsoft.NETCore.App.Runtime.Mono.browser-wasm/${DOTNET_RUNTIME_VERSION}" ] \
+	|| fail "Mono browser-wasm runtime pack ${DOTNET_RUNTIME_VERSION} not found under ${DOTNET_ROOT}/packs (dotnet workload install wasm-tools)"
+ls -d "${DOTNET_ROOT}"/sdk-manifests/*/microsoft.net.workload.mono.toolchain.current/"${WASM_WORKLOAD_MANIFEST}" > /dev/null 2>&1 \
+	|| fail "wasm-tools workload manifest ${WASM_WORKLOAD_MANIFEST} not installed"
 
 # Use the emscripten that ships with the wasm-tools workload, so that native code and the .NET
 # runtime are built by the same compiler.
-EMSDK_TOOLS="$(ls -d "${DOTNET_ROOT}"/packs/Microsoft.NET.Runtime.Emscripten.*.Sdk.*/*/tools 2>/dev/null | sort | tail -n 1)"
-EMSDK_CACHE_SEED="$(ls -d "${DOTNET_ROOT}"/packs/Microsoft.NET.Runtime.Emscripten.*.Cache.*/*/tools/emscripten/cache 2>/dev/null | sort | tail -n 1)"
-EMSDK_NODE="$(ls "${DOTNET_ROOT}"/packs/Microsoft.NET.Runtime.Emscripten.*.Node.*/*/tools/bin/node 2>/dev/null | sort | tail -n 1)"
-if [ -z "${EMSDK_TOOLS}" ] || [ -z "${EMSDK_CACHE_SEED}" ] || [ -z "${EMSDK_NODE}" ]; then
-	echo "The wasm-tools workload was not found under ${DOTNET_ROOT}. Run: dotnet workload install wasm-tools"
-	exit 1
-fi
+EMSDK_PACKS="${DOTNET_ROOT}/packs/Microsoft.NET.Runtime.Emscripten.${EMSCRIPTEN_VERSION}"
+EMSDK_TOOLS="${EMSDK_PACKS}.Sdk.linux-x64/${DOTNET_RUNTIME_VERSION}/tools"
+EMSDK_CACHE_SEED="${EMSDK_PACKS}.Cache.linux-x64/${DOTNET_RUNTIME_VERSION}/tools/emscripten/cache"
+EMSDK_NODE="${EMSDK_PACKS}.Node.linux-x64/${DOTNET_RUNTIME_VERSION}/tools/bin/node"
+for p in "${EMSDK_TOOLS}" "${EMSDK_CACHE_SEED}" "${EMSDK_NODE}"; do
+	[ -e "${p}" ] || fail "${p} not found: the wasm-tools workload for runtime ${DOTNET_RUNTIME_VERSION} (emscripten ${EMSCRIPTEN_VERSION}) is required"
+done
 
 export DOTNET_EMSCRIPTEN_LLVM_ROOT="${EMSDK_TOOLS}/bin"
 export DOTNET_EMSCRIPTEN_BINARYEN_ROOT="${EMSDK_TOOLS}"
@@ -66,13 +139,13 @@ export EM_FROZEN_CACHE=0
 export EM_IGNORE_SANITY=1
 EMCC="${EMSDK_TOOLS}/emscripten/emcc"
 EMAR="${EMSDK_TOOLS}/emscripten/emar"
+"${EMCC}" --version | head -n 1 | grep -q " ${EMSCRIPTEN_VERSION} " || fail "emcc is not emscripten ${EMSCRIPTEN_VERSION}"
+echo "SDK ${SDK}, runtime ${DOTNET_RUNTIME_VERSION}, workload ${WASM_WORKLOAD_MANIFEST}, emscripten ${EMSCRIPTEN_VERSION}"
 
 # Do not leave MSBuild/compiler server processes running after the build.
 export MSBUILDDISABLENODEREUSE=1
 export DOTNET_CLI_USE_MSBUILD_SERVER=0
 trap 'dotnet build-server shutdown > /dev/null 2>&1 || true' EXIT
-
-mkdir -p "${OBJ}" "${NATIVE}" "${DEPS}"
 
 # The emscripten cache must be writable to add the SDL2 and FreeType ports.
 if [ ! -d "${EM_CACHE}/sysroot" ]; then
@@ -86,12 +159,17 @@ fi
 NATIVE_CFLAGS="-O2 -fwasm-exceptions -sSUPPORT_LONGJMP=wasm"
 
 echo "== Lua ${LUA_VERSION}"
-if [ ! -f "${NATIVE}/lua51.a" ]; then
+# lua-5.1.5-webra.patch makes the wasm32 build behave like desktop x64 Lua: 64-bit lua_Integer,
+# 64-bit string positions and string.format integers, 64-bit tonumber(s, base).
+LUA_PATCH="${SRC_WEB}/native/lua/lua-${LUA_VERSION}-webra.patch"
+LUA_STAMP="$( (cat "${LUA_PATCH}"; echo "${LUA_SHA256} ${NATIVE_CFLAGS} ${EMSCRIPTEN_VERSION}") | sha256sum | cut -d ' ' -f 1)"
+if [ ! -f "${NATIVE}/lua51.a" ] || [ "$(cat "${NATIVE}/lua51.stamp" 2> /dev/null)" != "${LUA_STAMP}" ]; then
 	LUA_TAR="${DEPS}/lua-${LUA_VERSION}.tar.gz"
 	[ -f "${LUA_TAR}" ] || curl -fsSL -o "${LUA_TAR}" "https://www.lua.org/ftp/lua-${LUA_VERSION}.tar.gz"
 	echo "${LUA_SHA256}  ${LUA_TAR}" | sha256sum -c -
-	rm -rf "${DEPS}/lua-${LUA_VERSION}" "${OBJ}/lua-obj"
+	rm -rf "${DEPS}/lua-${LUA_VERSION}" "${OBJ}/lua-obj" "${NATIVE}/lua51.a" "${NATIVE}/lua51.stamp"
 	tar -xzf "${LUA_TAR}" -C "${DEPS}"
+	patch -p1 -s -d "${DEPS}/lua-${LUA_VERSION}" < "${LUA_PATCH}"
 	mkdir -p "${OBJ}/lua-obj"
 	for src in "${DEPS}/lua-${LUA_VERSION}"/src/*.c; do
 		case "$(basename "${src}")" in
@@ -100,41 +178,72 @@ if [ ! -f "${NATIVE}/lua51.a" ]; then
 		"${EMCC}" ${NATIVE_CFLAGS} -c "${src}" -o "${OBJ}/lua-obj/$(basename "${src}" .c).o"
 	done
 	"${EMAR}" rcs "${NATIVE}/lua51.a" "${OBJ}"/lua-obj/*.o
+	echo "${LUA_STAMP}" > "${NATIVE}/lua51.stamp"
 fi
 
 echo "== Native glue"
-"${EMCC}" ${NATIVE_CFLAGS} -c "${WEB}/native/webra_gl.c" -o "${OBJ}/webra_gl.o"
-"${EMCC}" ${NATIVE_CFLAGS} -c "${WEB}/native/wasm_sjlj_compat.c" -o "${OBJ}/wasm_sjlj_compat.o"
+"${EMCC}" ${NATIVE_CFLAGS} -c "${SRC_WEB}/native/webra_gl.c" -o "${OBJ}/webra_gl.o"
+"${EMCC}" ${NATIVE_CFLAGS} -c "${SRC_WEB}/native/wasm_sjlj_compat.c" -o "${OBJ}/wasm_sjlj_compat.o"
 rm -f "${NATIVE}/webra.a"
 "${EMAR}" rcs "${NATIVE}/webra.a" "${OBJ}/webra_gl.o" "${OBJ}/wasm_sjlj_compat.o"
 for module in SDL2 freetype6 soft_oal; do
-	"${EMCC}" ${NATIVE_CFLAGS} "-DWEBRA_STUB_SYMBOL=webra_module_stub_${module}" -c "${WEB}/native/module_stub.c" -o "${OBJ}/stub_${module}.o"
+	"${EMCC}" ${NATIVE_CFLAGS} "-DWEBRA_STUB_SYMBOL=webra_module_stub_${module}" -c "${SRC_WEB}/native/module_stub.c" -o "${OBJ}/stub_${module}.o"
 	rm -f "${NATIVE}/${module}.a"
 	"${EMAR}" rcs "${NATIVE}/${module}.a" "${OBJ}/stub_${module}.o"
 done
 
 # FreeTypeFont.cs reads FreeType structs through hardcoded 32-bit offsets: check them against
 # the FreeType that emscripten links (this also fetches the port into the cache).
-"${EMCC}" -sUSE_FREETYPE=1 -fsyntax-only "${WEB}/native/freetype_layout_check.c"
+"${EMCC}" -sUSE_FREETYPE=1 -fsyntax-only "${SRC_WEB}/native/freetype_layout_check.c"
 
-echo "== Eluant ${ELUANT_TAG} with WebAssembly callback markers"
+# Eluant: the exact source of the OpenRA-Eluant package that OpenRA.Game references, by commit.
+ELUANT_VERSION="$(sed -n 's/.*PackageReference Include="OpenRA-Eluant" Version="\([^"]*\)".*/\1/p' "${SRC}/OpenRA.Game/OpenRA.Game.csproj")"
+case "${ELUANT_VERSION}" in
+	1.0.23) ELUANT_COMMIT="cbaaad548d81c0f5739c6a03b10b01e807029e92" ;;
+	*) fail "OpenRA.Game references OpenRA-Eluant '${ELUANT_VERSION}': add its source commit to build-web.sh (tag ${ELUANT_VERSION} of https://github.com/OpenRA/Eluant)" ;;
+esac
+echo "== Eluant ${ELUANT_VERSION} (${ELUANT_COMMIT}) with WebAssembly callback markers"
 ELUANT_SRC="${DEPS}/Eluant"
-if [ ! -d "${ELUANT_SRC}" ]; then
-	git clone --quiet --depth 1 --branch "${ELUANT_TAG}" https://github.com/OpenRA/Eluant.git "${ELUANT_SRC}"
+if [ "$(git -C "${ELUANT_SRC}" rev-parse HEAD 2> /dev/null)" != "${ELUANT_COMMIT}" ]; then
+	rm -rf "${ELUANT_SRC}"
+	git init -q "${ELUANT_SRC}"
+	git -C "${ELUANT_SRC}" fetch -q --depth 1 https://github.com/OpenRA/Eluant.git "${ELUANT_COMMIT}"
+	git -C "${ELUANT_SRC}" checkout -q --detach FETCH_HEAD
 fi
-[ -n "${WEBRA_KEEP_ELUANT_EDITS:-}" ] || git -C "${ELUANT_SRC}" checkout --quiet -- .
-cp "${WEB}/native/eluant/MonoPInvokeCallbackAttribute.cs" "${ELUANT_SRC}/Eluant/"
+[ "$(git -C "${ELUANT_SRC}" rev-parse HEAD)" = "${ELUANT_COMMIT}" ] || fail "Eluant checkout is not ${ELUANT_COMMIT}"
+if [ "${WEBRA_DEV}" = "1" ] && [ -n "${WEBRA_KEEP_ELUANT_EDITS:-}" ]; then
+	echo "Keeping local Eluant edits (dev build)"
+else
+	git -C "${ELUANT_SRC}" checkout -q -- .
+	git -C "${ELUANT_SRC}" clean -q -fdx
+fi
+cp "${SRC_WEB}/native/eluant/MonoPInvokeCallbackAttribute.cs" "${ELUANT_SRC}/Eluant/"
 # Eluant declares lua_insert as returning int, but the C function returns void. Native platforms do
 # not care; WebAssembly traps on the mismatched call ("function signature mismatch"). The return
 # value is never used. Checked by OpenRA.Web/tools/check-pinvoke-signatures.py.
 sed -i 's/public static extern int lua_insert(IntPtr L, int index);/public static extern void lua_insert(IntPtr L, int index);/' "${ELUANT_SRC}/Eluant/LuaApi.cs"
-grep -q "extern void lua_insert" "${ELUANT_SRC}/Eluant/LuaApi.cs" || { echo "Failed to patch Eluant lua_insert"; exit 1; }
+grep -q "extern void lua_insert" "${ELUANT_SRC}/Eluant/LuaApi.cs" || fail "failed to patch Eluant lua_insert"
 # The Eluant sources sit inside this repo tree: keep OpenRA's Directory.Build.props out of them.
 dotnet build "${ELUANT_SRC}/Eluant/Eluant.csproj" -c Release -nologo -v quiet -p:ImportDirectoryBuildProps=false \
 	-p:DefineConstants=MONOTOUCH -p:OutputPath="${OBJ}/eluant/"
 
-echo "== GL delegate signatures"
-python3 -I "${WEB}/tools/gen-gl-signatures.py" "${ROOT}/OpenRA.Platforms.Default/OpenGL.cs" "${OBJ}/GLSignatures.g.cs"
+echo "== Generated sources"
+python3 -I "${SRC_WEB}/tools/gen-gl-signatures.py" "${SRC}/OpenRA.Platforms.Default/OpenGL.cs" "${OBJ}/GLSignatures.g.cs"
+DEV_BOOL=false
+[ "${WEBRA_DEV}" = "1" ] && DEV_BOOL=true
+cat > "${OBJ}/WebraBuildInfo.g.cs" << EOF
+// Generated by build-web.sh.
+namespace OpenRA.Web
+{
+	static class WebraBuildInfo
+	{
+		public const string Version = "${VERSION}";
+		public const string Commit = "${COMMIT}";
+		public const string RuntimeVersion = "${DOTNET_RUNTIME_VERSION}";
+		public static readonly bool Dev = ${DEV_BOOL};
+	}
+}
+EOF
 
 echo "== dotnet publish (${CONFIGURATION}, AOT=${WEBRA_AOT})"
 RUN_AOT=false
@@ -144,9 +253,9 @@ if [ "${WEBRA_AOT}" = "1" ]; then
 	# emcc's -O2 link step runs wasm-opt over the whole AOT module, which needs more than 6 GB.
 	LINK_OPT="${WEBRA_AOT_LINK_OPT:--O1}"
 fi
-PUBLISH="${WEB}/bin/${CONFIGURATION}/publish"
+PUBLISH="${SRC_WEB}/bin/${CONFIGURATION}/publish"
 rm -rf "${PUBLISH}"
-dotnet publish "${WEB}/OpenRA.Web.csproj" -c "${CONFIGURATION}" -nologo \
+dotnet publish "${SRC_WEB}/OpenRA.Web.csproj" -c "${CONFIGURATION}" -nologo \
 	-p:WebraNativeDir="${NATIVE}/" \
 	-p:WebraEluantPath="${OBJ}/eluant/Eluant.dll" \
 	-p:WebraGeneratedDir="${OBJ}/" \
@@ -156,13 +265,26 @@ dotnet publish "${WEB}/OpenRA.Web.csproj" -c "${CONFIGURATION}" -nologo \
 	-p:EmccLinkOptimizationFlag="${LINK_OPT}" \
 	-p:PublishDir="${PUBLISH}/"
 
-echo "== Checking generated P/Invoke prototypes against the C headers"
-PINVOKE_TABLE="${WEB}/obj/${CONFIGURATION}/wasm/for-publish/pinvoke-table.h"
-INCLUDE="${EM_CACHE}/sysroot/include"
+echo "== Checking the build"
+FRAMEWORK="${PUBLISH}/wwwroot/_framework"
+grep -q "Microsoft.NETCore.App.Runtime.Mono.browser-wasm/${DOTNET_RUNTIME_VERSION}/" "${FRAMEWORK}"/dotnet.native.*.js \
+	|| fail "the published runtime is not Microsoft.NETCore.App.Runtime.Mono.browser-wasm ${DOTNET_RUNTIME_VERSION}"
+
+# Every DllImport must call its C function with the exact WebAssembly signature, or it traps.
+PINVOKE_TABLE="${SRC_WEB}/obj/${CONFIGURATION}/wasm/for-publish/pinvoke-table.h"
+CHECK="python3 -I ${SRC_WEB}/tools/check-pinvoke-signatures.py --table ${PINVOKE_TABLE} --emcc ${EMCC} --allowlist ${SRC_WEB}/tools/pinvoke-allowlist.txt"
 LUA_SRC="${DEPS}/lua-${LUA_VERSION}/src"
-python3 -I "${WEB}/tools/check-pinvoke-signatures.py" "${PINVOKE_TABLE}" lua51 "${LUA_SRC}/lua.h" "${LUA_SRC}/lauxlib.h" "${LUA_SRC}/lualib.h"
-python3 -I "${WEB}/tools/check-pinvoke-signatures.py" "${PINVOKE_TABLE}" soft_oal "${INCLUDE}/AL/al.h" "${INCLUDE}/AL/alc.h"
-python3 -I "${WEB}/tools/check-pinvoke-signatures.py" "${PINVOKE_TABLE}" freetype6 "$(find "${EM_CACHE}" -name freetype.h | head -n 1)"
+${CHECK} --module lua51 "\"${LUA_SRC}/lua.h\"" "\"${LUA_SRC}/lauxlib.h\"" "\"${LUA_SRC}/lualib.h\""
+${CHECK} --module soft_oal "<AL/al.h>" "<AL/alc.h>"
+${CHECK} --module freetype6 --cflag=-sUSE_FREETYPE=1 "<ft2build.h>" "FT_FREETYPE_H"
+${CHECK} --module SDL2 --cflag=-sUSE_SDL=2 "<SDL2/SDL.h>" "<SDL2/SDL_vulkan.h>" "<SDL2/SDL_syswm.h>" | grep -v "not declared in the headers"
+
+# Lua's number-to-integer conversions match desktop x64 only while clang lowers them to guarded
+# i32/i64.trunc_f64_s (INT_MIN out of range, like cvttsd2si). The saturating forms (nontrapping-fptoint)
+# would give INT_MAX instead. SIMD forms (i32x4.trunc_sat_*) are Mono's vector intrinsics, not ours.
+NATIVE_WASM="$(ls "${FRAMEWORK}"/dotnet.native.*.wasm)"
+SATURATING="$("${EMSDK_TOOLS}/bin/llvm-objdump" -d "${NATIVE_WASM}" | grep -cE '[[:space:]]i(32|64)\.trunc_sat_f(32|64)_[su]' || true)"
+[ "${SATURATING}" = "0" ] || fail "${NATIVE_WASM} contains ${SATURATING} saturating float-to-int conversions; Lua would no longer match desktop"
 
 echo "== Staging ${DIST}"
 rm -rf "${DIST}"
@@ -172,29 +294,29 @@ cp -a "${PUBLISH}/wwwroot/." "${DIST}/"
 ENGINE_STAGE="${OBJ}/stage/engine"
 rm -rf "${ENGINE_STAGE}"
 mkdir -p "${ENGINE_STAGE}/mods"
-cp -a "${ROOT}/glsl" "${ROOT}/global mix database.dat" "${ENGINE_STAGE}/"
-cp -a "${ROOT}/mods/common" "${ENGINE_STAGE}/mods/"
+cp -a "${SRC}/glsl" "${SRC}/global mix database.dat" "${ENGINE_STAGE}/"
+cp -a "${SRC}/mods/common" "${ENGINE_STAGE}/mods/"
 for mod in ${WEBRA_MODS}; do
-	cp -a "${ROOT}/mods/${mod}" "${ENGINE_STAGE}/mods/"
-	[ -d "${ROOT}/mods/${mod}-content" ] && cp -a "${ROOT}/mods/${mod}-content" "${ENGINE_STAGE}/mods/"
+	cp -a "${SRC}/mods/${mod}" "${ENGINE_STAGE}/mods/"
+	[ -d "${SRC}/mods/${mod}-content" ] && cp -a "${SRC}/mods/${mod}-content" "${ENGINE_STAGE}/mods/"
 done
-[ -d "${ROOT}/mods/common-content" ] && cp -a "${ROOT}/mods/common-content" "${ENGINE_STAGE}/mods/"
+[ -d "${SRC}/mods/common-content" ] && cp -a "${SRC}/mods/common-content" "${ENGINE_STAGE}/mods/"
 (
 	set +o nounset # packaging/functions.sh relies on unset positional parameters
-	. "${ROOT}/packaging/functions.sh"
-	set_engine_version "${WEBRA_VERSION}" "${ENGINE_STAGE}"
-	set_mod_version "${WEBRA_VERSION}" "${ENGINE_STAGE}"/mods/*/mod.yaml
+	. "${SRC}/packaging/functions.sh"
+	set_engine_version "${VERSION}" "${ENGINE_STAGE}"
+	set_mod_version "${VERSION}" "${ENGINE_STAGE}"/mods/*/mod.yaml
 )
-python3 -I "${WEB}/tools/pack-data.py" "${ENGINE_STAGE}" /openra "${DIST}/data/engine"
+python3 -I "${SRC_WEB}/tools/pack-data.py" "${ENGINE_STAGE}" /openra "${DIST}/data/engine"
 
 if [ -n "${WEBRA_CONTENT_DIR:-}" ]; then
 	# Local testing only: this is copyrighted (freeware) game content. Do not publish it.
-	python3 -I "${WEB}/tools/pack-data.py" "${WEBRA_CONTENT_DIR}" /support/Content/ra/v2 "${DIST}/data/content"
+	python3 -I "${SRC_WEB}/tools/pack-data.py" "${WEBRA_CONTENT_DIR}" /support/Content/ra/v2 "${DIST}/data/content"
 fi
 
-cat > "${DIST}/data/build.json" <<EOF
-{"version":"${WEBRA_VERSION}","configuration":"${CONFIGURATION}","aot":${RUN_AOT},"mods":"${WEBRA_MODS}","content":$([ -n "${WEBRA_CONTENT_DIR:-}" ] && echo true || echo false)}
+cat > "${DIST}/data/build.json" << EOF
+{"version":"${VERSION}","commit":"${COMMIT}","dev":${DEV_BOOL},"configuration":"${CONFIGURATION}","aot":${RUN_AOT},"runtime":"${DOTNET_RUNTIME_VERSION}","mods":"${WEBRA_MODS}","content":$([ -n "${WEBRA_CONTENT_DIR:-}" ] && echo true || echo false)}
 EOF
 
-echo "Built ${WEBRA_VERSION} into ${DIST}"
+echo "Built ${VERSION} (${COMMIT}, dev=${DEV_BOOL}, AOT=${RUN_AOT}) into ${DIST}"
 du -sh "${DIST}"
