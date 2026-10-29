@@ -66,6 +66,24 @@ namespace OpenRA
 			browserInitialized = true;
 		}
 
+		/// <summary>What a browser frame does besides running the logic ticks that are due.</summary>
+		public enum BrowserFrameKind
+		{
+			/// <summary>An animation frame: render (if a render is due), pumping input into the game.</summary>
+			Render,
+
+			/// <summary>
+			/// A visible page between animation frames, driven by a steady clock: logic ticks only.
+			/// Input stays queued for the next render frame.
+			/// </summary>
+			Logic,
+
+			/// <summary>A hidden page, driven by a timer: logic ticks only, input is discarded.</summary>
+			Hidden,
+		}
+
+		static bool browserTickedSinceRender;
+
 		/// <summary>
 		/// Runs one browser frame. Returns false once the game has exited.
 		/// With <paramref name="render"/> false (a hidden page, driven by a timer instead of animation
@@ -73,6 +91,20 @@ namespace OpenRA
 		/// exchange keep going, so other players are not stalled, but nothing is drawn.
 		/// </summary>
 		public static bool BrowserFrame(bool render = true)
+		{
+			return BrowserFrame(render ? BrowserFrameKind.Render : BrowserFrameKind.Hidden);
+		}
+
+		/// <summary>
+		/// Runs the logic ticks that are due (the same ticks, in the same order, as Loop() runs them),
+		/// then, depending on <paramref name="kind"/>, renders. Returns false once the game has exited.
+		/// Logic frames let the page run logic ticks, and with them the network (orders, acks, pings),
+		/// on time while a slow GPU makes animation frames rare: a tick is due every 40 ms at normal
+		/// speed, but an animation frame only comes after the previous render.
+		/// Only the wall-clock moments at which LogicTick() runs change, which they also do on desktop
+		/// with its load; what the simulation receives is decided by the order stream alone.
+		/// </summary>
+		public static bool BrowserFrame(BrowserFrameKind kind)
 		{
 			if (!browserInitialized || state != RunStatus.Running)
 				return false;
@@ -120,13 +152,21 @@ namespace OpenRA
 			if (state != RunStatus.Running)
 				return false;
 
+			if (ticked)
+				browserTickedSinceRender = true;
+
+			if (kind == BrowserFrameKind.Logic)
+				return true;
+
 			// Render once per browser frame at most: anything drawn twice before the page returns
-			// to the event loop is never shown.
-			if (!render || Renderer.WindowIsSuspended)
+			// to the event loop is never shown. A tick since the last render (in this frame or in a
+			// logic frame) makes a render due, as in Loop().
+			if (kind == BrowserFrameKind.Hidden || Renderer.WindowIsSuspended)
 				Renderer.Window.PumpInput(new NullInputHandler());
-			else if (ticked || frameStart >= browserNextRender)
+			else if (browserTickedSinceRender || frameStart >= browserNextRender)
 			{
 				browserNextRender = frameStart + renderInterval;
+				browserTickedSinceRender = false;
 				RenderTick();
 				BrowserRenderFrames++;
 			}
