@@ -79,6 +79,62 @@ static const uint8_t *convert_bgra(const void *pixels, GLsizei width, GLsizei he
 	return dst;
 }
 
+/* Per texture name: bit 0 = generated and not deleted, bit 1 = bound at least once. */
+#define TEXTURE_LIVE 1
+#define TEXTURE_BOUND 2
+static uint8_t *texture_state = NULL;
+static size_t texture_state_size = 0;
+
+static void texture_state_update(GLuint id, uint8_t set, uint8_t clear)
+{
+	if (id == 0)
+		return;
+
+	if (id >= texture_state_size)
+	{
+		size_t size = texture_state_size ? texture_state_size : 1024;
+		while (size <= id)
+			size *= 2;
+
+		uint8_t *grown = (uint8_t *)realloc(texture_state, size);
+		if (grown == NULL)
+			abort();
+
+		memset(grown + texture_state_size, 0, size - texture_state_size);
+		texture_state = grown;
+		texture_state_size = size;
+	}
+
+	texture_state[id] = (uint8_t)((texture_state[id] & ~clear) | set);
+}
+
+static void webra_glGenTextures(GLsizei n, GLuint *textures)
+{
+	glGenTextures(n, textures);
+	for (GLsizei i = 0; i < n; i++)
+		texture_state_update(textures[i], TEXTURE_LIVE, TEXTURE_BOUND);
+}
+
+static void webra_glDeleteTextures(GLsizei n, const GLuint *textures)
+{
+	for (GLsizei i = 0; i < n; i++)
+		texture_state_update(textures[i], 0, TEXTURE_LIVE | TEXTURE_BOUND);
+	glDeleteTextures(n, textures);
+}
+
+static void webra_glBindTexture(GLenum target, GLuint texture)
+{
+	if (texture != 0 && texture < texture_state_size && (texture_state[texture] & TEXTURE_LIVE))
+		texture_state[texture] |= TEXTURE_BOUND;
+	glBindTexture(target, texture);
+}
+
+static GLboolean webra_glIsTexture(GLuint texture)
+{
+	return texture != 0 && texture < texture_state_size
+		&& texture_state[texture] == (TEXTURE_LIVE | TEXTURE_BOUND) ? GL_TRUE : GL_FALSE;
+}
+
 static void set_unpack(GLint row_length, GLint skip_pixels, GLint skip_rows)
 {
 	glPixelStorei(GL_UNPACK_ROW_LENGTH, row_length);
@@ -157,6 +213,18 @@ void *webra_gl_get_proc_address(const char *name)
 
 	if (strcmp(name, "glCopyTexImage2D") == 0)
 		return (void *)webra_glCopyTexImage2D;
+
+	if (strcmp(name, "glGenTextures") == 0)
+		return (void *)webra_glGenTextures;
+
+	if (strcmp(name, "glDeleteTextures") == 0)
+		return (void *)webra_glDeleteTextures;
+
+	if (strcmp(name, "glBindTexture") == 0)
+		return (void *)webra_glBindTexture;
+
+	if (strcmp(name, "glIsTexture") == 0)
+		return (void *)webra_glIsTexture;
 
 	return SDL_GL_GetProcAddress(name);
 }
