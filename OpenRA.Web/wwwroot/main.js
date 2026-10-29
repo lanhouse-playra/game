@@ -94,6 +94,13 @@ function bootArguments() {
 		'Engine.LaunchPath=/openra/openra-web',
 	];
 
+	// WebSocket-to-TCP relay for game connections, from the deployment's data/build.json
+	// (build-web.sh WEBRA_PROXY_URL). Dev builds also accept ?proxy=ws://... A link must not be able
+	// to send a player's game traffic through somebody else's relay.
+	const proxy = debugParam('proxy') || (WebRA.build && WebRA.build.proxy);
+	if (proxy)
+		args.push(`Game.WebSocketProxy=${proxy}`);
+
 	// Extra engine arguments for testing, e.g. ?arg=Graphics.CapFramerate=True&arg=...
 	for (const extra of debugParams('arg'))
 		args.push(extra);
@@ -135,6 +142,43 @@ function startFrameLoop(host) {
 	schedule();
 }
 
+// Game connections: the engine opens a WebSocket to the WebSocket-to-TCP relay through these
+// functions (OpenRA.Web/WebSocketTransport.cs). Events go straight back into managed code.
+function createNetModule(getTransport) {
+	const sockets = new Map();
+	let nextId = 1;
+	return {
+		open(url) {
+			const id = nextId++;
+			const ws = new WebSocket(url);
+			ws.binaryType = 'arraybuffer';
+			ws.onopen = () => getTransport().OnOpen(id);
+			ws.onmessage = e => getTransport().OnMessage(id, new Uint8Array(e.data));
+			ws.onclose = e => {
+				sockets.delete(id);
+				getTransport().OnClose(id, e.code, e.reason || '');
+			};
+			sockets.set(id, ws);
+			return id;
+		},
+		send(id, view) {
+			const ws = sockets.get(id);
+			// slice() copies the bytes out of the managed heap before the call returns.
+			if (ws && ws.readyState === WebSocket.OPEN)
+				ws.send(view.slice());
+		},
+		close(id) {
+			const ws = sockets.get(id);
+			if (!ws)
+				return;
+
+			sockets.delete(id);
+			ws.onopen = ws.onmessage = ws.onclose = null;
+			ws.close();
+		},
+	};
+}
+
 async function main() {
 	setPhase('runtime');
 	const build = WebRA.build = await fetch('data/build.json').then(r => r.ok ? r.json() : {}).catch(() => ({}));
@@ -161,8 +205,10 @@ async function main() {
 
 	const runtime = await builder.create();
 
-	const { Module, getAssemblyExports } = runtime;
+	const { Module, getAssemblyExports, setModuleImports } = runtime;
 	WebRA.runtime = runtime;
+	let transport = null;
+	setModuleImports('webra-net', createNetModule(() => transport));
 
 	setPhase('downloading');
 	const [engine, content] = await Promise.all([
@@ -187,6 +233,7 @@ async function main() {
 
 	WebRA.exports = host;
 	WebRA.allExports = exports;
+	transport = exports.OpenRA.Web.WebSocketTransport;
 	if (debugParam('luatest') !== null) {
 		const r = exports.OpenRA.Web.LuaSelfTest.Run(Number(debugParam('luatest')) || 3);
 		console.log('[webra] lua self-test:\n' + r);

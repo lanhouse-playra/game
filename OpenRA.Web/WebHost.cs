@@ -38,6 +38,7 @@ namespace OpenRA.Web
 
 			try
 			{
+				Network.NetworkConnection.StreamTransportFactory = WebSocketTransport.Open;
 				Game.BrowserInitialize(args);
 			}
 			catch (Exception e)
