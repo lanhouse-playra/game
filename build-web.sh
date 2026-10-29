@@ -189,7 +189,8 @@ if [ ! -f "${NATIVE}/lua51.a" ] || [ "$(cat "${NATIVE}/lua51.stamp" 2> /dev/null
 fi
 
 echo "== Native glue"
-"${EMCC}" ${NATIVE_CFLAGS} -c "${SRC_WEB}/native/webra_gl.c" -o "${OBJ}/webra_gl.o"
+# -msimd128: the GL shim's BGRA conversion uses WebAssembly SIMD (the runtime is built with SIMD too).
+"${EMCC}" ${NATIVE_CFLAGS} -msimd128 -c "${SRC_WEB}/native/webra_gl.c" -o "${OBJ}/webra_gl.o"
 "${EMCC}" ${NATIVE_CFLAGS} -c "${SRC_WEB}/native/wasm_sjlj_compat.c" -o "${OBJ}/wasm_sjlj_compat.o"
 rm -f "${NATIVE}/webra.a"
 "${EMAR}" rcs "${NATIVE}/webra.a" "${OBJ}/webra_gl.o" "${OBJ}/wasm_sjlj_compat.o"

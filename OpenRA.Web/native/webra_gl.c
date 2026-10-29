@@ -24,6 +24,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <GLES3/gl3.h>
+#ifdef __wasm_simd128__
+#include <wasm_simd128.h>
+#endif
 
 #define WEBRA_GL_BGRA 0x80E1
 
@@ -61,13 +64,25 @@ static const uint8_t *convert_bgra(const void *pixels, GLsizei width, GLsizei he
 	if (dst == NULL)
 		return NULL;
 
-	/* One 32-bit word per pixel (WebAssembly is little endian): B G R A in memory is 0xAARRGGBB,
-	 * R G B A is 0xAABBGGRR. memcpy keeps unaligned client buffers safe and compiles to plain loads. */
+	/* Four pixels at a time with a WebAssembly SIMD byte shuffle (the .NET runtime of this build
+	 * requires SIMD already), the rest one 32-bit word per pixel (WebAssembly is little endian:
+	 * B G R A in memory is 0xAARRGGBB, R G B A is 0xAABBGGRR). Both handle unaligned buffers. */
 	uint8_t *out = dst;
 	for (GLsizei y = 0; y < height; y++)
 	{
 		const uint8_t *in = src + (size_t)y * row_pixels * 4;
-		for (GLsizei x = 0; x < width; x++)
+		GLsizei x = 0;
+#ifdef __wasm_simd128__
+		for (; x + 4 <= width; x += 4)
+		{
+			v128_t v = wasm_v128_load(in);
+			v = wasm_i8x16_shuffle(v, v, 2, 1, 0, 3, 6, 5, 4, 7, 10, 9, 8, 11, 14, 13, 12, 15);
+			wasm_v128_store(out, v);
+			in += 16;
+			out += 16;
+		}
+#endif
+		for (; x < width; x++)
 		{
 			uint32_t p;
 			memcpy(&p, in, 4);
