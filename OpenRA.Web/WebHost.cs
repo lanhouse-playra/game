@@ -34,6 +34,8 @@ namespace OpenRA.Web
 		public static void Boot(string[] args)
 		{
 			Console.WriteLine("OpenRA.Web: booting with " + string.Join(" ", args));
+			BootChecks.Run();
+
 			try
 			{
 				Game.BrowserInitialize(args);

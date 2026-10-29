@@ -66,6 +66,7 @@
 
 	<ItemGroup Condition="'$(WebraGeneratedDir)' != ''">
 		<Compile Include="$(WebraGeneratedDir)GLSignatures.g.cs" />
+		<Compile Include="$(WebraGeneratedDir)WebraBuildInfo.g.cs" />
 	</ItemGroup>
 
 	<ItemGroup Condition="'$(WebraNativeDir)' != ''">
