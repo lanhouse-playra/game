@@ -5,22 +5,47 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>OpenRA</title>
 	<style>
-		html, body { margin: 0; height: 100%; background: #000; color: #ccc; font: 14px sans-serif; overflow: hidden; }
-		#canvas { display: block; margin: 0 auto; outline: none; }
-		#overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; background: #000; }
+		html, body { margin: 0; height: 100%; background: #000; color: #ccc; font: 15px/1.4 system-ui, sans-serif; overflow: hidden; }
+		body { display: flex; align-items: center; justify-content: center; }
+		#canvas { display: block; outline: none; touch-action: none; }
+		#overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #000; }
 		body[data-phase="running"] #overlay { display: none; }
-		#spinner { width: 40px; height: 40px; border: 4px solid #333; border-top-color: #c00; border-radius: 50%; animation: spin 1s linear infinite; }
-		body[data-phase="error"] #spinner { display: none; }
-		#status { white-space: pre-wrap; max-width: 80ch; text-align: center; }
-		@keyframes spin { to { transform: rotate(360deg); } }
+		#panel { width: min(560px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 12px; }
+		h1 { margin: 0; font-size: 22px; color: #eee; letter-spacing: 0.04em; }
+		#step { color: #eee; }
+		#bar { width: 100%; height: 10px; accent-color: #c22; }
+		#detail { white-space: pre-line; font-size: 13px; color: #999; min-height: 3.6em; font-variant-numeric: tabular-nums; }
+		#note { font-size: 13px; color: #999; border-left: 3px solid #633; padding-left: 10px; }
+		#hint { font-size: 12px; color: #777; }
+		#failure { display: none; flex-direction: column; gap: 10px; }
+		body[data-phase="error"] #failure { display: flex; }
+		body[data-phase="error"] #bar, body[data-phase="error"] #detail { display: none; }
+		#error { color: #f88; white-space: pre-wrap; }
+		button { font: inherit; color: #eee; background: #622; border: 1px solid #a44; border-radius: 3px; padding: 6px 14px; cursor: pointer; align-self: flex-start; }
+		button:hover { background: #833; }
+		#fullscreen { position: fixed; right: 8px; bottom: 8px; padding: 4px 8px; font-size: 12px; opacity: 0.45; background: #311; }
+		#fullscreen:hover { opacity: 1; }
+		#fullscreen[hidden], #note[hidden] { display: none; }
+		body:not([data-phase="running"]) #fullscreen { display: none; }
 	</style>
 </head>
 <body data-phase="loading">
-	<canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+	<canvas id="canvas" tabindex="0"></canvas>
 	<div id="overlay">
-		<div id="spinner"></div>
-		<div id="status">Loading</div>
+		<div id="panel">
+			<h1>OpenRA: Red Alert</h1>
+			<div id="step">Loading</div>
+			<progress id="bar" max="1" value="0"></progress>
+			<div id="detail"></div>
+			<div id="note" hidden>First visit: the original Red Alert game files (freeware) are downloaded from the official OpenRA mirrors, about 13 MB, and kept in this browser, so later visits start without downloading them again.</div>
+			<div id="failure">
+				<div id="error"></div>
+				<button id="retry" type="button">Try again</button>
+			</div>
+			<div id="hint">Fullscreen: Alt+Enter. The game uses the F-keys and Tab, so the browser's shortcuts for them are off while it runs.</div>
+		</div>
 	</div>
+	<button id="fullscreen" type="button" hidden title="Fullscreen (Alt+Enter)">Fullscreen</button>
 	<script type="module" src="main.js"></script>
 </body>
 </html>
