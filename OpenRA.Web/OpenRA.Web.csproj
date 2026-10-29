@@ -19,6 +19,13 @@
 		<UseSystemResourceKeys>false</UseSystemResourceKeys>
 		<WasmEnableThreads>false</WasmEnableThreads>
 
+		<!--
+			OpenRA reads HTTP responses with synchronous Stream.Read calls (map details and map downloads
+			from the resource center). The browser HttpClient's streaming responses only support async
+			reads; buffered responses (the whole body is fetched before the content is returned) support both.
+		-->
+		<WasmEnableStreamingResponse>false</WasmEnableStreamingResponse>
+
 		<!-- Native build: link emscripten's SDL2, FreeType, OpenAL and WebGL 2 plus our Lua and GL shim. -->
 		<WasmBuildNative>true</WasmBuildNative>
 		<WasmCachePath Condition="'$(WebraEmCache)' != ''">$(WebraEmCache)</WasmCachePath>
