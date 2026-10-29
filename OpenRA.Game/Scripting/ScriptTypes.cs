@@ -26,6 +26,31 @@ namespace OpenRA.Scripting
 			return value.GetType();
 		}
 
+		/// <summary>
+		/// Converts a Lua number to int the way CoreCLR (.NET 9 and later, on x64 and arm64) converts
+		/// double to int: NaN becomes 0, values outside the int range saturate to int.MinValue or
+		/// int.MaxValue, and everything else is truncated towards zero.
+		/// A plain (int) cast is not portable: other runtimes (Mono, including the WebAssembly runtime)
+		/// return int.MinValue for NaN and for every out-of-range value. Script values reach the
+		/// simulation, so the result must be identical everywhere.
+		/// Narrower types are converted from the result, as CoreCLR does: (short)ToInt32Saturated(d)
+		/// and (byte)ToInt32Saturated(d) wrap like an int-to-short or int-to-byte cast.
+		/// </summary>
+		public static int ToInt32Saturated(double value)
+		{
+			if (double.IsNaN(value))
+				return 0;
+
+			if (value >= int.MaxValue)
+				return int.MaxValue;
+
+			if (value <= int.MinValue)
+				return int.MinValue;
+
+			// In range: truncation is exact and identical on every runtime.
+			return (int)value;
+		}
+
 		public static bool TryGetClrValue<T>(this LuaValue value, out T clrObject)
 		{
 			var ret = value.TryGetClrValue(typeof(T), out var temp);
@@ -72,19 +97,19 @@ namespace OpenRA.Scripting
 				// TODO: Lua 5.3 will introduce an integer type, so this will be able to go away
 				if (t.IsAssignableFrom(typeof(int)))
 				{
-					clrObject = (int)value.ToNumber().Value;
+					clrObject = ToInt32Saturated(value.ToNumber().Value);
 					return true;
 				}
 
 				if (t.IsAssignableFrom(typeof(short)))
 				{
-					clrObject = (short)value.ToNumber().Value;
+					clrObject = (short)ToInt32Saturated(value.ToNumber().Value);
 					return true;
 				}
 
 				if (t.IsAssignableFrom(typeof(byte)))
 				{
-					clrObject = (byte)value.ToNumber().Value;
+					clrObject = (byte)ToInt32Saturated(value.ToNumber().Value);
 					return true;
 				}
 			}
