@@ -61,16 +61,18 @@ static const uint8_t *convert_bgra(const void *pixels, GLsizei width, GLsizei he
 	if (dst == NULL)
 		return NULL;
 
+	/* One 32-bit word per pixel (WebAssembly is little endian): B G R A in memory is 0xAARRGGBB,
+	 * R G B A is 0xAABBGGRR. memcpy keeps unaligned client buffers safe and compiles to plain loads. */
 	uint8_t *out = dst;
 	for (GLsizei y = 0; y < height; y++)
 	{
 		const uint8_t *in = src + (size_t)y * row_pixels * 4;
 		for (GLsizei x = 0; x < width; x++)
 		{
-			out[0] = in[2];
-			out[1] = in[1];
-			out[2] = in[0];
-			out[3] = in[3];
+			uint32_t p;
+			memcpy(&p, in, 4);
+			p = (p & 0xFF00FF00u) | ((p >> 16) & 0xFFu) | ((p & 0xFFu) << 16);
+			memcpy(out, &p, 4);
 			in += 4;
 			out += 4;
 		}
