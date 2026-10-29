@@ -343,7 +343,7 @@ function createWorkerClock(onTick) {
 	const useFallback = reason => {
 		if (fallback)
 			return;
-		console.warn(`[webra] hidden-tab clock worker unavailable (${reason}); using a timer, which browsers throttle in hidden tabs`);
+		console.warn(`[webra] clock worker unavailable (${reason}); hidden tabs and logic frames use a main-thread timer, which browsers throttle in hidden tabs`);
 		WebRA.clockFallback = String(reason);
 		notify(NOTICES.clock);
 		fallback = createTimerClock(onTick);

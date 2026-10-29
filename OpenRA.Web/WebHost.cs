@@ -78,9 +78,10 @@ namespace OpenRA.Web
 		}
 
 		/// <summary>
-		/// Runs the logic ticks that are due and nothing else (no render, input left queued). The page
-		/// calls this from a steady clock between animation frames while it is visible, so that ticks,
-		/// and with them orders, acks and ping replies, are not held back by a slow render.
+		/// Runs the logic ticks that are due and nothing else (no render, input left queued; only a tick
+		/// that starts a game shows the mod's load screen, as on desktop). The page calls this from a
+		/// steady clock between animation frames while it is visible, so that ticks, and with them
+		/// orders, acks and ping replies, are not held back by a slow render.
 		/// Returns false once the game has exited.
 		/// </summary>
 		[JSExport]

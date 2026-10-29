@@ -97,7 +97,9 @@ namespace OpenRA
 
 			/// <summary>
 			/// A visible page between animation frames, driven by a steady clock: logic ticks only.
-			/// Input stays queued for the next render frame.
+			/// Input stays queued for the next render frame. The exception is a tick that starts a game:
+			/// the mod's load screen renders and pumps input (into a NullInputHandler) while the map loads,
+			/// as it does on desktop.
 			/// </summary>
 			Logic,
 
