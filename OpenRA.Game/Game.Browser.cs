@@ -62,7 +62,7 @@ namespace OpenRA
 				Settings.Graphics.CapFramerate = false;
 			}
 
-			browserNextLogic = browserNextRender = RunTime;
+			browserNextLogic = browserNextRender = browserLastRenderEnd = RunTime;
 			browserInitialized = true;
 		}
 
@@ -82,7 +82,15 @@ namespace OpenRA
 			Hidden,
 		}
 
+		// A logic frame runs at most one tick, and none once a render has been due for this long (counted
+		// from the end of the last render, or from when the next render is due under a frame rate cap):
+		// when the logic falls behind (a fast-forwarded replay, a slow machine catching up), ticks in
+		// back-to-back logic frames would otherwise keep the page busy and rendering would never run.
+		// The animation frames then catch up as before (BrowserMaxFrameLogicMilliseconds, then render).
+		const int BrowserLogicFrameWindow = 50;
+
 		static bool browserTickedSinceRender;
+		static long browserLastRenderEnd;
 
 		/// <summary>
 		/// Runs one browser frame. Returns false once the game has exited.
@@ -110,6 +118,8 @@ namespace OpenRA
 				return false;
 
 			var frameStart = RunTime;
+			if (kind == BrowserFrameKind.Logic && frameStart - Math.Max(browserLastRenderEnd, browserNextRender) > BrowserLogicFrameWindow)
+				return true;
 
 			var logicInterval = Ui.Timestep;
 			var logicWorld = worldRenderer?.World;
@@ -145,7 +155,7 @@ namespace OpenRA
 				BrowserLogicTicks++;
 				ticked = true;
 
-				if (RunTime - frameStart > BrowserMaxFrameLogicMilliseconds)
+				if (kind == BrowserFrameKind.Logic || RunTime - frameStart > BrowserMaxFrameLogicMilliseconds)
 					break;
 			}
 
@@ -169,6 +179,7 @@ namespace OpenRA
 				browserTickedSinceRender = false;
 				RenderTick();
 				BrowserRenderFrames++;
+				browserLastRenderEnd = RunTime;
 			}
 
 			return state == RunStatus.Running;
