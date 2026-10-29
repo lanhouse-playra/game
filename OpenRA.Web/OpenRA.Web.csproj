@@ -59,6 +59,9 @@
 	<ItemGroup>
 		<!-- C sources and the Eluant addition are built by build-web.sh, not by this project. -->
 		<Compile Remove="native/**" />
+		<!-- The conformance corpus is shared with its desktop runner (conformance/desktop). -->
+		<Compile Remove="conformance/**" />
+		<Compile Include="conformance/ConformanceCorpus.cs" />
 	</ItemGroup>
 
 	<ItemGroup Condition="'$(WebraGeneratedDir)' != ''">

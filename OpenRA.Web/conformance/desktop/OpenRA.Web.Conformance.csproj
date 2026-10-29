@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<!--
+		Desktop side of the numeric conformance corpus (../ConformanceCorpus.cs): runs it on CoreCLR with
+		the Lua 5.1 library that desktop OpenRA ships (the OpenRA-Eluant package natives) and prints it.
+		The browser side is the same file compiled into OpenRA.Web. See tools/conformance.sh.
+	-->
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net10.0</TargetFramework>
+		<Nullable>disable</Nullable>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<RootNamespace>OpenRA.Web.Conformance</RootNamespace>
+		<OutputPath>$(MSBuildProjectDirectory)/bin/</OutputPath>
+		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+		<!-- Selects the native Lua library from the OpenRA-Eluant package, as the engine's Directory.Build.props does. -->
+		<TargetPlatform Condition="$([MSBuild]::IsOsPlatform('Linux')) And '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'X64'">linux-x64</TargetPlatform>
+		<TargetPlatform Condition="$([MSBuild]::IsOsPlatform('Linux')) And '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'Arm64'">linux-arm64</TargetPlatform>
+		<TargetPlatform Condition="$([MSBuild]::IsOsPlatform('OSX')) And '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'X64'">osx-x64</TargetPlatform>
+		<TargetPlatform Condition="$([MSBuild]::IsOsPlatform('OSX')) And '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'Arm64'">osx-arm64</TargetPlatform>
+		<TargetPlatform Condition="$([MSBuild]::IsOsPlatform('Windows')) And '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'X64'">win-x64</TargetPlatform>
+		<TargetPlatform Condition="$([MSBuild]::IsOsPlatform('Windows')) And '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'Arm64'">win-arm64</TargetPlatform>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Compile Include="../ConformanceCorpus.cs" />
+		<ProjectReference Include="../../../OpenRA.Game/OpenRA.Game.csproj" />
+		<!-- Referenced directly (same version as OpenRA.Game) so that the package's native Lua is copied. -->
+		<PackageReference Include="OpenRA-Eluant" Version="1.0.23" />
+	</ItemGroup>
+</Project>
