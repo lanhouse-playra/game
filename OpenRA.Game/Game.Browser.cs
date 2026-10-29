@@ -32,15 +32,26 @@ namespace OpenRA
 		const int BrowserMaxFrameLogicMilliseconds = 100;
 
 		// A logic frame runs at most one tick, and logic frames stop once they have kept the page busy for
-		// this long since the last animation frame: when the logic falls behind (a fast-forwarded replay,
-		// a slow machine catching up), ticks in back-to-back logic frames would otherwise occupy the page
-		// and the animation frame would never run. The animation frames then catch up as before
+		// this long since the last Render (or Hidden) frame: when the logic falls behind (a fast-forwarded
+		// replay, a slow machine catching up), ticks in back-to-back logic frames would otherwise occupy
+		// the page and the animation frame would never run. The animation frames then catch up as before
 		// (BrowserMaxFrameLogicMilliseconds, then render). A slow GPU alone (animation frames far apart,
 		// the page idle in between) does not stop them: this counts busy time, not elapsed time.
 		const double BrowserLogicFrameBudget = 50;
 
+		// A page the browser reports visible can still get no animation frames at all (an offscreen
+		// cross-origin iframe, a GPU process restart, a compositor that stopped vsync). Nothing would then
+		// reset the budget above, the page would stop ticking and every other player in a match would
+		// stall. Once no Render or Hidden frame has run for this long, logic frames get a fresh budget at
+		// most once per BrowserLogicFrameBudgetWindow milliseconds: they keep the full tick rate but can
+		// still occupy at most about half of the page's time, leaving room for animation frames that return.
+		const int BrowserNoAnimationFrameMilliseconds = 500;
+		const int BrowserLogicFrameBudgetWindow = 100;
+
 		static long browserNextLogic;
 		static long browserNextRender;
+		static long browserLastBudgetReset;
+		static long browserLastAnimationFrame;
 		static bool browserInitialized;
 
 		public static int BrowserLogicTicks { get; private set; }
@@ -48,6 +59,9 @@ namespace OpenRA
 		public static int BrowserLocalTick => OrderManager?.LocalFrameNumber ?? 0;
 		public static string BrowserWorldType => OrderManager?.World?.Type.ToString() ?? "none";
 		public static int BrowserWorldTick => OrderManager?.World?.WorldTick ?? 0;
+
+		/// <summary>How often logic frames got a fresh budget because no animation frame came (diagnostics).</summary>
+		public static int BrowserLogicBudgetResets { get; private set; }
 
 		/// <summary>For the host's diagnostics and test hooks.</summary>
 		public static OrderManager BrowserOrderManager => OrderManager;
@@ -71,7 +85,7 @@ namespace OpenRA
 				Settings.Graphics.CapFramerate = false;
 			}
 
-			browserNextLogic = browserNextRender = RunTime;
+			browserNextLogic = browserNextRender = browserLastBudgetReset = browserLastAnimationFrame = RunTime;
 			browserInitialized = true;
 		}
 
@@ -120,7 +134,15 @@ namespace OpenRA
 				return false;
 
 			if (kind == BrowserFrameKind.Logic && browserLogicFrameMilliseconds >= BrowserLogicFrameBudget)
-				return true;
+			{
+				var now = RunTime;
+				if (now - browserLastAnimationFrame < BrowserNoAnimationFrameMilliseconds || now - browserLastBudgetReset < BrowserLogicFrameBudgetWindow)
+					return true;
+
+				browserLogicFrameMilliseconds = 0;
+				browserLastBudgetReset = now;
+				BrowserLogicBudgetResets++;
+			}
 
 			var frameStart = RunTime;
 			var frameStartTimestamp = Stopwatch.GetTimestamp();
@@ -176,6 +198,7 @@ namespace OpenRA
 			}
 
 			browserLogicFrameMilliseconds = 0;
+			browserLastBudgetReset = browserLastAnimationFrame = frameStart;
 
 			// Render once per browser frame at most: anything drawn twice before the page returns
 			// to the event loop is never shown. A tick since the last render (in this frame or in a
