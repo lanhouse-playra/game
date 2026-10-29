@@ -297,6 +297,8 @@ async function main() {
 	WebRA.exports = host;
 	WebRA.allExports = exports;
 	transport = exports.OpenRA.Web.WebSocketTransport;
+	WebRA.net = exports.OpenRA.Web.NetDiagnostics;
+	WebRA.netStatus = () => JSON.parse(WebRA.net.Status());
 	if (debugParam('luatest') !== null) {
 		const r = exports.OpenRA.Web.LuaSelfTest.Run(Number(debugParam('luatest')) || 3);
 		console.log('[webra] lua self-test:\n' + r);

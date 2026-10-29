@@ -10,6 +10,7 @@
 #endregion
 
 using System;
+using OpenRA.Network;
 using OpenRA.Widgets;
 
 namespace OpenRA
@@ -38,6 +39,12 @@ namespace OpenRA
 		public static int BrowserLocalTick => OrderManager?.LocalFrameNumber ?? 0;
 		public static string BrowserWorldType => OrderManager?.World?.Type.ToString() ?? "none";
 		public static int BrowserWorldTick => OrderManager?.World?.WorldTick ?? 0;
+
+		/// <summary>For the host's diagnostics and test hooks.</summary>
+		public static OrderManager BrowserOrderManager => OrderManager;
+
+		/// <summary>For the host's diagnostics and test hooks.</summary>
+		public static Graphics.WorldRenderer BrowserGetWorldRenderer() => worldRenderer;
 
 		public static void BrowserInitialize(string[] args)
 		{
