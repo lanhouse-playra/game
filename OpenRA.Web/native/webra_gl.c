@@ -104,7 +104,9 @@ static size_t texture_state_size = 0;
 
 static void texture_state_update(GLuint id, uint8_t set, uint8_t clear)
 {
-	if (id == 0)
+	/* A name the table has never seen has no bits to clear (a delete of a name that was never
+	 * generated): do not grow the table for it. */
+	if (id == 0 || (set == 0 && id >= texture_state_size))
 		return;
 
 	if (id >= texture_state_size)
