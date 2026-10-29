@@ -25,7 +25,13 @@
 		button:hover { background: #833; }
 		#fullscreen { position: fixed; right: 8px; bottom: 8px; padding: 4px 8px; font-size: 12px; opacity: 0.45; background: #311; }
 		#fullscreen:hover { opacity: 1; }
-		#fullscreen[hidden], #note[hidden] { display: none; }
+		#fullscreen[hidden], #note[hidden], #notice[hidden] { display: none; }
+		#footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+		#reset { font-size: 12px; padding: 3px 10px; white-space: nowrap; flex: none; background: transparent; border-color: #533; color: #999; }
+		#reset:hover { background: #311; color: #eee; }
+		#notice { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); width: min(720px, calc(100vw - 32px)); box-sizing: border-box; display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; background: #2a1414; border: 1px solid #a44; border-radius: 3px; color: #eee; font-size: 14px; z-index: 10; }
+		#notice-text { flex: 1; }
+		#notice-close { padding: 2px 10px; font-size: 12px; }
 		body:not([data-phase="running"]) #fullscreen { display: none; }
 	</style>
 </head>
@@ -42,10 +48,14 @@
 				<div id="error"></div>
 				<button id="retry" type="button">Try again</button>
 			</div>
-			<div id="hint">Fullscreen: Alt+Enter. The game uses the F-keys and Tab, so the browser's shortcuts for them are off while it runs.</div>
+			<div id="footer">
+				<div id="hint">Fullscreen: Alt+Enter. The game uses the F-keys and Tab, so the browser's shortcuts for them are off while it runs.</div>
+				<button id="reset" type="button" title="Deletes the settings, profile, replays and maps saved in this browser (the game content stays)">Reset saved data</button>
+			</div>
 		</div>
 	</div>
 	<button id="fullscreen" type="button" hidden title="Fullscreen (Alt+Enter)">Fullscreen</button>
+	<div id="notice" role="status" hidden><span id="notice-text"></span><button id="notice-close" type="button">Close</button></div>
 	<script type="module" src="main.js"></script>
 </body>
 </html>

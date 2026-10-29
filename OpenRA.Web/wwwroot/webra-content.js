@@ -37,12 +37,32 @@ function plan(manifest) {
 // Identifies an installation: a different manifest (other packages or hashes) reinstalls.
 const installId = packages => packages.map(p => `${p.id}:${p.sha1}`).join(',');
 
+// A refusal from the relay: {"error": code, "message": text for the player, "retryAfter": seconds}.
+// Only a fetch still in progress on the relay ("content_pending") is worth retrying at once; the
+// others (download limits, the daily budget, mirrors down) are shown to the player as they are.
+class RelayRefusal extends Error {
+	constructor(status, body) {
+		super(body.message || `${status} ${body.error}`);
+		this.code = body.error;
+		this.retryAfter = Number(body.retryAfter) || 0;
+		this.retry = body.error === 'content_pending' || body.error === 'server_full';
+	}
+}
+
+const inMinutes = seconds => seconds < 90 ? `${Math.max(1, Math.round(seconds))} s` : `${Math.round(seconds / 60)} min`;
+
 async function download(url, onProgress) {
 	let lastError;
 	for (let attempt = 1; attempt <= 3; attempt++) {
 		try {
 			const response = await fetch(url, { cache: 'no-store' });
 			if (!response.ok) {
+				if ((response.headers.get('content-type') || '').includes('application/json')) {
+					const body = await response.json().catch(() => ({}));
+					if (body && body.error)
+						throw new RelayRefusal(response.status, body);
+				}
+
 				const text = (await response.text().catch(() => '')).trim().slice(0, 200);
 				throw new Error(`${response.status} ${response.statusText}${text ? ': ' + text : ''}`);
 			}
@@ -76,9 +96,19 @@ async function download(url, onProgress) {
 		} catch (e) {
 			lastError = e;
 			console.warn(`[webra] content download attempt ${attempt} failed:`, e);
+			if (e instanceof RelayRefusal && !e.retry)
+				break;
 			if (attempt < 3)
-				await new Promise(r => setTimeout(r, 2000 * attempt));
+				await new Promise(r => setTimeout(r, e instanceof RelayRefusal ? Math.min(30, Math.max(2, e.retryAfter)) * 1000 : 2000 * attempt));
 		}
+	}
+
+	if (lastError instanceof RelayRefusal) {
+		// The budget message names the reset time itself.
+		const wait = lastError.retryAfter && !lastError.retry && lastError.code !== 'budget_exhausted';
+		const error = new Error(lastError.message + (wait ? ` (Try again in about ${inMinutes(lastError.retryAfter)}.)` : ''));
+		error.code = lastError.code;
+		throw error;
 	}
 
 	throw new Error(`Downloading ${url} failed: ${lastError && lastError.message || lastError}`);
