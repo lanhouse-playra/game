@@ -14,6 +14,7 @@ OpenRA.Game/Network/Connection.cs
 OpenRA.Game/Network/ConnectionTarget.cs
 OpenRA.Game/ObjectCreator.cs
 OpenRA.Game/Scripting/ScriptTypes.cs
+OpenRA.Game/Settings.cs
 OpenRA.Game/Support/HttpClientFactory.cs
 OpenRA.Game/Support/Log.cs
 OpenRA.Mods.Common/MasterServerJson.cs

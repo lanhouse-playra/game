@@ -349,6 +349,9 @@ namespace OpenRA
 
 		public bool FetchNews = true;
 
+		[Desc("Browser builds only: URL of the WebSocket relay used to reach game servers, e.g. wss://relay.example/connect.")]
+		public string WebSocketProxy = "";
+
 		[Desc("Version of introduction prompt that the player last viewed.")]
 		public int IntroductionPromptVersion = 0;
 
