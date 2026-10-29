@@ -1,0 +1,4 @@
+# Build output of build-web.sh
+/dist/
+# The engine-wide .gitignore ignores *.html
+!/wwwroot/*.html

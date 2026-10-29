@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>OpenRA</title>
+	<style>
+		html, body { margin: 0; height: 100%; background: #000; color: #ccc; font: 14px sans-serif; overflow: hidden; }
+		#canvas { display: block; margin: 0 auto; outline: none; }
+		#overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; background: #000; }
+		body[data-phase="running"] #overlay { display: none; }
+		#spinner { width: 40px; height: 40px; border: 4px solid #333; border-top-color: #c00; border-radius: 50%; animation: spin 1s linear infinite; }
+		body[data-phase="error"] #spinner { display: none; }
+		#status { white-space: pre-wrap; max-width: 80ch; text-align: center; }
+		@keyframes spin { to { transform: rotate(360deg); } }
+	</style>
+</head>
+<body data-phase="loading">
+	<canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+	<div id="overlay">
+		<div id="spinner"></div>
+		<div id="status">Loading</div>
+	</div>
+	<script type="module" src="main.js"></script>
+</body>
+</html>
