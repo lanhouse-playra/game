@@ -139,6 +139,22 @@ namespace OpenRA
 			LoadMapInternal(map, package, classification, oldMap);
 		}
 
+		/// <summary>
+		/// Browser (WebAssembly) builds: loads a map whose files were added to one of the map folders after
+		/// <see cref="LoadMaps"/> ran (the page downloads the bundled maps after the main menu is shown).
+		/// Loaded as LoadMaps loads maps, so it does not count as a map modified at run time.
+		/// </summary>
+		public void LoadDeferredMap(string map, IReadOnlyPackage package, MapClassification classification,
+			MapGridType gridType, MiniYamlNode[][] modDataRules)
+		{
+			if (!OperatingSystem.IsBrowser())
+				throw new PlatformNotSupportedException("LoadDeferredMap is only supported in the browser.");
+
+			var lastModifiedMap = LastModifiedMap;
+			LoadMapInternal(map, package, classification, null, gridType, modDataRules);
+			LastModifiedMap = lastModifiedMap;
+		}
+
 		void LoadMapInternal(string map, IReadOnlyPackage package, MapClassification classification, string oldMap,
 			MapGridType? gridType = null, MiniYamlNode[][] modDataRules = null)
 		{

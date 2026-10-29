@@ -10,11 +10,14 @@
 #endregion
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.Linq;
 using System.Runtime.InteropServices.JavaScript;
 using System.Runtime.Versioning;
 using System.Text;
+using OpenRA.FileSystem;
 
 namespace OpenRA.Web
 {
@@ -28,6 +31,10 @@ namespace OpenRA.Web
 		static double logicFrameMillisecondsTotal;
 		static double logicFrameMillisecondsWorst;
 		static int logicFramesMeasured;
+
+		static readonly Queue<(IReadOnlyPackage Folder, MapClassification Classification, string Map)> PendingMaps = new();
+		static MiniYamlNode[][] pendingMapsRules;
+		static int deferredMapsLoaded;
 
 		// The runtime starts without running Main: the page drives the engine through the exports below.
 		public static void Main() { }
@@ -106,6 +113,65 @@ namespace OpenRA.Web
 			return running;
 		}
 
+		/// <summary>
+		/// Queues maps whose files the page wrote into a map folder of the mod after boot: the bundled
+		/// maps, which the page downloads after the main menu is shown. <paramref name="folder"/> is the
+		/// folder's path (e.g. /openra/mods/ra/maps), <paramref name="maps"/> the map file or directory
+		/// names in it. Returns the number of queued maps; <see cref="LoadPendingMaps"/> loads them.
+		/// </summary>
+		[JSExport]
+		public static int AddMaps(string folder, string[] maps)
+		{
+			var location = Game.ModData.MapCache.MapLocations.FirstOrDefault(kv => kv.Key.Name == folder);
+			if (location.Key == null)
+				throw new ArgumentException($"{folder} is not a map folder of the mod.", nameof(folder));
+
+			foreach (var map in maps)
+				PendingMaps.Enqueue((location.Key, location.Value, map));
+
+			return PendingMaps.Count;
+		}
+
+		/// <summary>
+		/// Loads queued maps into the map cache (they then show in the map chooser, the lobby and the
+		/// replay browser) until <paramref name="budgetMilliseconds"/> have passed, at least one.
+		/// The page calls this between frames. Returns the number of maps still queued.
+		/// </summary>
+		[JSExport]
+		public static int LoadPendingMaps(double budgetMilliseconds)
+		{
+			if (PendingMaps.Count == 0)
+				return 0;
+
+			var start = Stopwatch.GetTimestamp();
+			var modData = Game.ModData;
+			var gridType = modData.GetOrCreate<MapGrid>().Type;
+
+			// As in MapCache.LoadMaps: parse the mod's rules once, not once per map.
+			pendingMapsRules ??= modData.GetRulesYaml();
+			while (PendingMaps.Count > 0)
+			{
+				var (folder, classification, map) = PendingMaps.Dequeue();
+				modData.MapCache.LoadDeferredMap(map, folder, classification, gridType, pendingMapsRules);
+				deferredMapsLoaded++;
+				if (Stopwatch.GetElapsedTime(start).TotalMilliseconds >= budgetMilliseconds)
+					break;
+			}
+
+			if (PendingMaps.Count == 0)
+				pendingMapsRules = null;
+
+			return PendingMaps.Count;
+		}
+
+		/// <summary>Test hook: "status,class,title" of the map with this uid in the map cache.</summary>
+		[JSExport]
+		public static string MapInfo(string uid)
+		{
+			var map = Game.ModData.MapCache[uid];
+			return string.Create(CultureInfo.InvariantCulture, $"{map.Status},{map.Class},{map.Title}");
+		}
+
 		/// <summary>Debug hook: the managed stack of the main thread (also callable from a paused debugger).</summary>
 		[JSExport]
 		public static string StackTrace() => Environment.StackTrace;
@@ -149,7 +215,10 @@ namespace OpenRA.Web
 			sb.Append(CultureInfo.InvariantCulture, $"\"logicFrameMsAvg\":{(logicFramesMeasured > 0 ? logicFrameMillisecondsTotal / logicFramesMeasured : 0):F3},");
 			sb.Append(CultureInfo.InvariantCulture, $"\"logicFrameMsWorst\":{logicFrameMillisecondsWorst:F3},");
 			sb.Append(CultureInfo.InvariantCulture, $"\"logicFramesOverBudget\":{Game.BrowserLogicFramesOverBudget},");
-			sb.Append(CultureInfo.InvariantCulture, $"\"logicBudgetResets\":{Game.BrowserLogicBudgetResets}");
+			sb.Append(CultureInfo.InvariantCulture, $"\"logicBudgetResets\":{Game.BrowserLogicBudgetResets},");
+			sb.Append(CultureInfo.InvariantCulture, $"\"deferredMapsLoaded\":{deferredMapsLoaded},");
+			sb.Append(CultureInfo.InvariantCulture, $"\"deferredMapsPending\":{PendingMaps.Count},");
+			sb.Append(CultureInfo.InvariantCulture, $"\"mapsAvailable\":{Game.ModData?.MapCache.Count(m => m.Status == MapStatus.Available) ?? 0}");
 			sb.Append('}');
 
 			if (resetFrameStats)
