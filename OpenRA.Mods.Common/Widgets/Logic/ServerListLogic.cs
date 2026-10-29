@@ -441,13 +441,19 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 
 			searchStatus = SearchStatus.Fetching;
 
-			var queryURL = new HttpQueryBuilder(services.ServerList)
+			var query = new HttpQueryBuilder(services.ServerList)
 			{
 				{ "protocol", GameServer.ProtocolVersion },
 				{ "engine", Game.EngineVersion },
 				{ "mod", Game.ModData.Manifest.Id },
 				{ "version", Game.ModData.Manifest.Metadata.Version }
-			}.ToString();
+			};
+
+			// Browser (WebAssembly) builds can only read the JSON listing: it is the only one that allows cross-origin requests.
+			if (OperatingSystem.IsBrowser())
+				query.Add("type", MasterServerJson.QueryType);
+
+			var queryURL = query.ToString();
 
 			Task.Run(async () =>
 			{
@@ -460,7 +466,7 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 					var httpResponseMessage = await client.GetAsync(queryURL);
 					var result = await httpResponseMessage.Content.ReadAsStreamAsync();
 
-					var yaml = MiniYaml.FromStream(result, queryURL);
+					var yaml = OperatingSystem.IsBrowser() ? MasterServerJson.ParseGameList(result) : MiniYaml.FromStream(result, queryURL);
 					games = [];
 					foreach (var node in yaml)
 					{
