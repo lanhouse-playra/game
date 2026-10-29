@@ -1,0 +1,3 @@
+<Project>
+	<!-- Keeps the engine's Directory.Build.props (output into bin/, analyzers) out of the conformance runner. -->
+</Project>
