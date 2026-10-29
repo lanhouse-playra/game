@@ -759,6 +759,11 @@ namespace OpenRA.Platforms.Default
 		// per presented frame) reads the error flags every BrowserErrorCheckFrames frames instead.
 		// GL error flags stay set until read, so errors are still reported (with a less precise stack
 		// trace), and WebGL also names the failing call in the browser console.
+		// For diagnosis, the environment variable WEBRA_GL_CHECK_EVERY_CALL=1 restores the check after
+		// every call, with the stack trace of the failing call (dev builds of the page set it from
+		// ?env=WEBRA_GL_CHECK_EVERY_CALL=1; release pages ignore debug URL parameters).
+		static readonly bool BrowserCheckEveryCall = OperatingSystem.IsBrowser() &&
+			Environment.GetEnvironmentVariable("WEBRA_GL_CHECK_EVERY_CALL") == "1";
 		static int browserFramesSinceErrorCheck;
 
 		public static void CheckGLError()
@@ -767,7 +772,7 @@ namespace OpenRA.Platforms.Default
 			if ((Features & GLFeatures.DebugMessagesCallback) == GLFeatures.DebugMessagesCallback)
 				return;
 
-			if (OperatingSystem.IsBrowser())
+			if (OperatingSystem.IsBrowser() && !BrowserCheckEveryCall)
 				return;
 
 			ReadGLErrors();
