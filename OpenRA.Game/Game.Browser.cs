@@ -59,8 +59,13 @@ namespace OpenRA
 			browserInitialized = true;
 		}
 
-		/// <summary>Runs one browser animation frame. Returns false once the game has exited.</summary>
-		public static bool BrowserFrame()
+		/// <summary>
+		/// Runs one browser frame. Returns false once the game has exited.
+		/// With <paramref name="render"/> false (a hidden page, driven by a timer instead of animation
+		/// frames) only the due logic ticks run: the simulation, the network and the lockstep order
+		/// exchange keep going, so other players are not stalled, but nothing is drawn.
+		/// </summary>
+		public static bool BrowserFrame(bool render = true)
 		{
 			if (!browserInitialized || state != RunStatus.Running)
 				return false;
@@ -110,7 +115,7 @@ namespace OpenRA
 
 			// Render once per browser frame at most: anything drawn twice before the page returns
 			// to the event loop is never shown.
-			if (Renderer.WindowIsSuspended)
+			if (!render || Renderer.WindowIsSuspended)
 				Renderer.Window.PumpInput(new NullInputHandler());
 			else if (ticked || frameStart >= browserNextRender)
 			{
