@@ -1,0 +1,22 @@
+# Upstream files that the webra patch set may change, relative to the upstream tag in build-web.sh.
+# An official build (one stamped with the upstream version, which servers accept) refuses to build
+# if any other file outside OpenRA.Web/ differs from the tag: the server admits a client by its mod
+# and version string alone, so code it runs must be upstream's plus these reviewed patches.
+# mods/, glsl/ and "global mix database.dat" must always equal the tag.
+# Add a file here only together with the review of its change.
+OpenRA.Game/Game.Browser.cs
+OpenRA.Game/Game.cs
+OpenRA.Game/GameRules/Ruleset.cs
+OpenRA.Game/Map/MapCache.cs
+OpenRA.Game/Map/MapDirectoryTracker.cs
+OpenRA.Game/ObjectCreator.cs
+OpenRA.Game/Scripting/ScriptTypes.cs
+OpenRA.Game/Support/HttpClientFactory.cs
+OpenRA.Game/Support/Log.cs
+OpenRA.Mods.Common/MasterServerJson.cs
+OpenRA.Mods.Common/Widgets/Logic/MissionBrowserLogic.cs
+OpenRA.Mods.Common/Widgets/Logic/ServerListLogic.cs
+OpenRA.Platforms.Default/OpenAlSoundEngine.cs
+OpenRA.Platforms.Default/OpenGL.cs
+OpenRA.Platforms.Default/Sdl2PlatformWindow.cs
+build-web.sh

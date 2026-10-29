@@ -29,6 +29,11 @@ def main():
     with open(out + ".bin", "wb") as blob:
         for root, dirs, names in os.walk(source):
             dirs.sort()
+            for name in dirs + names:
+                # A symlink could pull files from outside the tree into the published data.
+                if os.path.islink(os.path.join(root, name)):
+                    sys.exit(f"refusing to pack symlink {os.path.join(root, name)}")
+
             for name in sorted(names):
                 path = os.path.join(root, name)
                 if not os.path.isfile(path):
