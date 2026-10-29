@@ -10,6 +10,7 @@
 #endregion
 
 using System;
+using System.Diagnostics;
 using OpenRA.Network;
 using OpenRA.Widgets;
 
@@ -29,6 +30,14 @@ namespace OpenRA
 		// Stop running logic ticks in a single frame after this long, so that the page stays responsive.
 		// Any remaining ticks run on the next frame (Loop() behaves the same way when it falls behind).
 		const int BrowserMaxFrameLogicMilliseconds = 100;
+
+		// A logic frame runs at most one tick, and logic frames stop once they have kept the page busy for
+		// this long since the last animation frame: when the logic falls behind (a fast-forwarded replay,
+		// a slow machine catching up), ticks in back-to-back logic frames would otherwise occupy the page
+		// and the animation frame would never run. The animation frames then catch up as before
+		// (BrowserMaxFrameLogicMilliseconds, then render). A slow GPU alone (animation frames far apart,
+		// the page idle in between) does not stop them: this counts busy time, not elapsed time.
+		const double BrowserLogicFrameBudget = 50;
 
 		static long browserNextLogic;
 		static long browserNextRender;
@@ -62,7 +71,7 @@ namespace OpenRA
 				Settings.Graphics.CapFramerate = false;
 			}
 
-			browserNextLogic = browserNextRender = browserLastRenderEnd = RunTime;
+			browserNextLogic = browserNextRender = RunTime;
 			browserInitialized = true;
 		}
 
@@ -82,15 +91,8 @@ namespace OpenRA
 			Hidden,
 		}
 
-		// A logic frame runs at most one tick, and none once a render has been due for this long (counted
-		// from the end of the last render, or from when the next render is due under a frame rate cap):
-		// when the logic falls behind (a fast-forwarded replay, a slow machine catching up), ticks in
-		// back-to-back logic frames would otherwise keep the page busy and rendering would never run.
-		// The animation frames then catch up as before (BrowserMaxFrameLogicMilliseconds, then render).
-		const int BrowserLogicFrameWindow = 50;
-
 		static bool browserTickedSinceRender;
-		static long browserLastRenderEnd;
+		static double browserLogicFrameMilliseconds;
 
 		/// <summary>
 		/// Runs one browser frame. Returns false once the game has exited.
@@ -117,9 +119,11 @@ namespace OpenRA
 			if (!browserInitialized || state != RunStatus.Running)
 				return false;
 
-			var frameStart = RunTime;
-			if (kind == BrowserFrameKind.Logic && frameStart - Math.Max(browserLastRenderEnd, browserNextRender) > BrowserLogicFrameWindow)
+			if (kind == BrowserFrameKind.Logic && browserLogicFrameMilliseconds >= BrowserLogicFrameBudget)
 				return true;
+
+			var frameStart = RunTime;
+			var frameStartTimestamp = Stopwatch.GetTimestamp();
 
 			var logicInterval = Ui.Timestep;
 			var logicWorld = worldRenderer?.World;
@@ -166,7 +170,12 @@ namespace OpenRA
 				browserTickedSinceRender = true;
 
 			if (kind == BrowserFrameKind.Logic)
+			{
+				browserLogicFrameMilliseconds += Stopwatch.GetElapsedTime(frameStartTimestamp).TotalMilliseconds;
 				return true;
+			}
+
+			browserLogicFrameMilliseconds = 0;
 
 			// Render once per browser frame at most: anything drawn twice before the page returns
 			// to the event loop is never shown. A tick since the last render (in this frame or in a
@@ -179,7 +188,6 @@ namespace OpenRA
 				browserTickedSinceRender = false;
 				RenderTick();
 				BrowserRenderFrames++;
-				browserLastRenderEnd = RunTime;
 			}
 
 			return state == RunStatus.Running;
