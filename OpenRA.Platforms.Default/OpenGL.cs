@@ -289,7 +289,7 @@ namespace OpenRA.Platforms.Default
 		public delegate void PixelStorei(int paramName, int param);
 		public static PixelStorei glPixelStorei { get; private set; }
 
-		public delegate int GetIntegerv(int pname, out int param);
+		public delegate void GetIntegerv(int pname, out int param);
 		public static GetIntegerv glGetIntegerv { get; private set; }
 
 		public delegate void Finish();
@@ -313,7 +313,7 @@ namespace OpenRA.Platforms.Default
 		public delegate void CompileShader(uint shader);
 		public static CompileShader glCompileShader { get; private set; }
 
-		public delegate int GetShaderiv(uint shader, int name, out int param);
+		public delegate void GetShaderiv(uint shader, int name, out int param);
 		public static GetShaderiv glGetShaderiv { get; private set; }
 
 		public delegate void AttachShader(uint program, uint shader);
