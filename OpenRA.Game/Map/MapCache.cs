@@ -352,6 +352,29 @@ namespace OpenRA
 
 		public void CacheMinimap(MapPreview preview)
 		{
+			// The browser (WebAssembly) build is single-threaded: render the minimap on the main thread
+			// after the current tick, as the loader thread would.
+			if (OperatingSystem.IsBrowser())
+			{
+				Game.RunAfterTick(() =>
+				{
+					if (preview.GetMinimap() != null || preview.Preview == null)
+						return;
+
+					try
+					{
+						preview.SetMinimap(sheetBuilder.Add(preview.Preview));
+					}
+					catch (Exception e)
+					{
+						Log.Write("debug", "Failed to load minimap with exception:");
+						Log.Write("debug", e);
+					}
+				});
+
+				return;
+			}
+
 			bool launchPreviewLoaderThread;
 			lock (syncRoot)
 			{
