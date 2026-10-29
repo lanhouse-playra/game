@@ -307,6 +307,11 @@ const HIDDEN_FRAME_INTERVAL_MS = 10;
 // (every 40 ms at normal speed), so most of these calls return at once.
 const VISIBLE_LOGIC_INTERVAL_MS = 5;
 
+// The worker keeps posting while the main thread is blocked (a map load takes seconds), so its
+// messages queue up and then arrive back to back. A logic frame that comes less than this long after
+// the previous one ended is skipped: the backlog drains without a managed call per message.
+const MIN_LOGIC_FRAME_GAP_MS = 2;
+
 // If the worker cannot run (CSP, browser policy), a main-thread timer chain takes over. Browsers
 // throttle it in hidden tabs: measured in Chrome, about one wake-up and so one logic tick per second
 // instead of 25. The engine does not catch up on missed ticks (Game.MaxLogicTicksBehind, 250 ms), so
@@ -396,7 +401,8 @@ function createWorkerClock(onTick) {
 function startFrameLoop(host) {
 	let stopped = false;
 	let rafPending = false;
-	const stats = WebRA.frameStats = { visibleFrames: 0, logicFrames: 0, hiddenFrames: 0, visibilityChanges: 0 };
+	const stats = WebRA.frameStats = { visibleFrames: 0, logicFrames: 0, skippedLogicFrames: 0, hiddenFrames: 0, visibilityChanges: 0 };
+	let lastLogicFrameEnd = -Infinity;
 
 	// render: true (animation frame), false (hidden page), 'logic' (visible page, between animation frames)
 	const runFrame = render => {
@@ -431,9 +437,12 @@ function startFrameLoop(host) {
 		if (document.hidden) {
 			stats.hiddenFrames++;
 			runFrame(false);
+		} else if (performance.now() - lastLogicFrameEnd < MIN_LOGIC_FRAME_GAP_MS) {
+			stats.skippedLogicFrames++;
 		} else {
 			stats.logicFrames++;
 			runFrame('logic');
+			lastLogicFrameEnd = performance.now();
 		}
 	});
 
