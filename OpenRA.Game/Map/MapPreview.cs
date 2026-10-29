@@ -691,6 +691,11 @@ namespace OpenRA
 
 					var mapFilename = response.Content.Headers.ContentDisposition?.FileName;
 
+					// Browsers only expose a cross-origin response's Content-Disposition when the server lists it in
+					// Access-Control-Expose-Headers, which the resource center does not: name the file by its uid.
+					if (string.IsNullOrEmpty(mapFilename) && OperatingSystem.IsBrowser())
+						mapFilename = Uid + ".oramap";
+
 					// Map not found
 					if (string.IsNullOrEmpty(mapFilename))
 					{
