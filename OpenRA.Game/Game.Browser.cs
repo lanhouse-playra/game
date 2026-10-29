@@ -60,6 +60,9 @@ namespace OpenRA
 		public static string BrowserWorldType => OrderManager?.World?.Type.ToString() ?? "none";
 		public static int BrowserWorldTick => OrderManager?.World?.WorldTick ?? 0;
 
+		/// <summary>How many logic frames returned without ticking because their budget was spent (diagnostics).</summary>
+		public static int BrowserLogicFramesOverBudget { get; private set; }
+
 		/// <summary>How often logic frames got a fresh budget because no animation frame came (diagnostics).</summary>
 		public static int BrowserLogicBudgetResets { get; private set; }
 
@@ -139,7 +142,10 @@ namespace OpenRA
 			{
 				var now = RunTime;
 				if (now - browserLastAnimationFrame < BrowserNoAnimationFrameMilliseconds || now - browserLastBudgetReset < BrowserLogicFrameBudgetWindow)
+				{
+					BrowserLogicFramesOverBudget++;
 					return true;
+				}
 
 				browserLogicFrameMilliseconds = 0;
 				browserLastBudgetReset = now;
