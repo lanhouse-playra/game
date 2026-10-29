@@ -48,15 +48,18 @@ namespace OpenRA.Web
 			}
 		}
 
-		/// <summary>Runs one animation frame. Returns false once the game has exited.</summary>
+		/// <summary>
+		/// Runs one frame. Returns false once the game has exited.
+		/// The page passes render = false while it is hidden (logic and network only).
+		/// </summary>
 		[JSExport]
-		public static bool Frame()
+		public static bool Frame(bool render)
 		{
 			FrameTimer.Restart();
 			bool running;
 			try
 			{
-				running = Game.BrowserFrame();
+				running = Game.BrowserFrame(render);
 			}
 			catch (Exception e)
 			{

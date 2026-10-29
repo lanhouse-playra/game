@@ -108,38 +108,101 @@ function bootArguments() {
 	return args;
 }
 
+// Frame scheduling.
+//
+// Visible page: one engine frame (logic ticks that are due, then one render) per animation frame.
+//
+// Hidden page: requestAnimationFrame stops, and main-thread timers are throttled to about one wake-up
+// per second (and to one per minute after five minutes in Chrome). In a lockstep multiplayer game a
+// client that stops ticking stalls every other player, so while hidden the frames are driven by a
+// clock in a dedicated worker, whose timers are not throttled, and run without rendering. The
+// worker's messages are ordinary tasks on the main thread, which hidden pages still run promptly.
+const HIDDEN_FRAME_INTERVAL_MS = 10;
+
+function createWorkerClock(onTick) {
+	const source = `let timer = 0;
+		onmessage = e => {
+			clearInterval(timer);
+			timer = e.data > 0 ? setInterval(() => postMessage(0), e.data) : 0;
+		};`;
+	const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+	const worker = new Worker(url);
+	URL.revokeObjectURL(url);
+	worker.onmessage = onTick;
+	return {
+		start: interval => worker.postMessage(interval),
+		stop: () => worker.postMessage(0),
+	};
+}
+
 function startFrameLoop(host) {
 	let stopped = false;
+	let rafPending = false;
+	const stats = WebRA.frameStats = { visibleFrames: 0, hiddenFrames: 0, hiddenTicksIgnored: 0, visibilityChanges: 0 };
 
-	const frame = () => {
+	const runFrame = render => {
 		if (stopped)
 			return;
 
 		try {
-			if (!host.Frame()) {
+			if (!host.Frame(render)) {
 				stopped = true;
+				clock.stop();
 				setPhase('exited');
-				return;
 			}
 		} catch (e) {
 			stopped = true;
+			clock.stop();
 			fail(e);
+		}
+	};
+
+	const onAnimationFrame = () => {
+		rafPending = false;
+		if (stopped || document.hidden)
+			return;
+
+		stats.visibleFrames++;
+		runFrame(true);
+		requestFrame();
+	};
+
+	const clock = createWorkerClock(() => {
+		// The clock only runs while hidden; ignore messages still queued after the page became visible.
+		if (!document.hidden) {
+			stats.hiddenTicksIgnored++;
 			return;
 		}
 
-		schedule();
+		stats.hiddenFrames++;
+		runFrame(false);
+	});
+
+	const requestFrame = () => {
+		if (!rafPending && !stopped) {
+			rafPending = true;
+			requestAnimationFrame(onAnimationFrame);
+		}
 	};
 
-	// requestAnimationFrame stops in hidden tabs, which would stall the simulation (and, in a
-	// lockstep multiplayer game, every other player). Fall back to timers while hidden.
-	const schedule = () => {
+	const onVisibility = () => {
+		stats.visibilityChanges++;
+		if (stopped)
+			return;
+
 		if (document.hidden)
-			setTimeout(frame, 40);
-		else
-			requestAnimationFrame(frame);
+			clock.start(HIDDEN_FRAME_INTERVAL_MS);
+		else {
+			clock.stop();
+			requestFrame();
+		}
 	};
 
-	schedule();
+	document.addEventListener('visibilitychange', onVisibility);
+	if (document.hidden)
+		clock.start(HIDDEN_FRAME_INTERVAL_MS);
+	else
+		requestFrame();
 }
 
 // Game connections: the engine opens a WebSocket to the WebSocket-to-TCP relay through these
