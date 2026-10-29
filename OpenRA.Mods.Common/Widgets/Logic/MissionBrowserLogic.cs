@@ -208,15 +208,15 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 			}
 
 			// Preload map preview to reduce jank
-			new Thread(() =>
+			RunInBackground(() =>
 			{
 				foreach (var p in allPreviews)
 					p.GetMinimap();
-			}).Start();
+			});
 
 			var startButton = widget.Get<ButtonWidget>("STARTGAME_BUTTON");
 			startButton.OnClick = () => StartMissionClicked(onExit);
-			startButton.IsDisabled = () => selectedMap == null;
+			startButton.IsDisabled = () => selectedMap == null || !CanStartLocalGame;
 
 			widget.Get<ButtonWidget>("BACK_BUTTON").OnClick = () =>
 			{
@@ -288,7 +288,7 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 			var infoVideo = "";
 			var infoVideoVisible = false;
 
-			new Thread(() =>
+			RunInBackground(() =>
 			{
 				var missionData = preview.WorldActorInfo.TraitInfoOrDefault<MissionDataInfo>();
 				if (missionData != null)
@@ -313,7 +313,7 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 						}
 					});
 				}
-			}).Start();
+			});
 
 			startBriefingVideoButton.IsVisible = () => briefingVideoVisible && playingVideo != PlayingVideo.Briefing;
 			startBriefingVideoButton.OnClick = () => PlayVideo(videoPlayer, briefingVideo, PlayingVideo.Briefing);
@@ -594,8 +594,23 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 			playingVideo = PlayingVideo.None;
 		}
 
+		// The browser build has no threads, so Thread.Start throws: run the work on the main thread, after the tick.
+		static void RunInBackground(Action action)
+		{
+			if (OperatingSystem.IsBrowser())
+				Game.RunAfterTick(action);
+			else
+				new Thread(action.Invoke).Start();
+		}
+
+		// Missions run on a local server, which needs threads and sockets: not available in the browser build yet.
+		static bool CanStartLocalGame => !OperatingSystem.IsBrowser();
+
 		void StartMissionClicked(Action onExit)
 		{
+			if (!CanStartLocalGame)
+				return;
+
 			StopVideo(videoPlayer);
 
 			// If selected mission becomes unavailable, exit MissionBrowser to refresh
