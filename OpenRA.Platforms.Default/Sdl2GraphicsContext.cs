@@ -142,6 +142,9 @@ namespace OpenRA.Platforms.Default
 		{
 			VerifyThreadAffinity();
 			SDL.SDL_GL_SwapWindow(window.Window);
+
+			// Browser builds only (see OpenGL.CheckGLError).
+			OpenGL.CheckDeferredGLErrors();
 		}
 
 		static int ModeFromPrimitiveType(PrimitiveType pt)

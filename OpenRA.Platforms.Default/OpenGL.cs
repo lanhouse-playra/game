@@ -66,6 +66,9 @@ namespace OpenRA.Platforms.Default
 		public const int GL_CONTEXT_LOST = 0x0507;
 		public const int GL_TABLE_TOO_LARGE = 0x8031;
 
+		// Browser builds: how often CheckDeferredGLErrors reads the GL error flags (see CheckGLError).
+		const int BrowserErrorCheckFrames = 120;
+
 		static readonly FrozenDictionary<int, string> ErrorToText = new Dictionary<int, string>
 		{
 			{ GL_NO_ERROR, "No Error" },
@@ -749,12 +752,39 @@ namespace OpenRA.Platforms.Default
 				Log.Write("graphics", glGetStringi(GL_EXTENSIONS, (uint)i));
 		}
 
+		// Browser (WebGL) builds: glGetError is a synchronous round trip to the browser's GPU process,
+		// which first executes every GL command queued so far. The renderer calls CheckGLError after
+		// almost every GL call, which made hundreds of round trips per frame and more than half of the
+		// frame time. In the browser, CheckGLError does nothing and CheckDeferredGLErrors (called once
+		// per presented frame) reads the error flags every BrowserErrorCheckFrames frames instead.
+		// GL error flags stay set until read, so errors are still reported (with a less precise stack
+		// trace), and WebGL also names the failing call in the browser console.
+		static int browserFramesSinceErrorCheck;
+
 		public static void CheckGLError()
 		{
 			// Let the debug message handler log the errors instead.
 			if ((Features & GLFeatures.DebugMessagesCallback) == GLFeatures.DebugMessagesCallback)
 				return;
 
+			if (OperatingSystem.IsBrowser())
+				return;
+
+			ReadGLErrors();
+		}
+
+		/// <summary>Browser builds: reads the GL error flags every <see cref="BrowserErrorCheckFrames"/> calls.</summary>
+		public static void CheckDeferredGLErrors()
+		{
+			if (!OperatingSystem.IsBrowser() || ++browserFramesSinceErrorCheck < BrowserErrorCheckFrames)
+				return;
+
+			browserFramesSinceErrorCheck = 0;
+			ReadGLErrors();
+		}
+
+		static void ReadGLErrors()
+		{
 			var type = glGetError();
 			if (type == GL_NO_ERROR)
 				return;
