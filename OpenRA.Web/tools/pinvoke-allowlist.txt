@@ -1,0 +1,22 @@
+# DllImports whose WebAssembly signature differs from the C declaration, checked by
+# check-pinvoke-signatures.py. Calling one of these traps, so every entry must be a function that
+# OpenRA never calls. Format: <module> <function> <reason>
+#
+# SDL2-CS binds the variadic logging functions without the variadic argument (C lowers "..." to an
+# extra pointer).
+SDL2 SDL_Log not called by OpenRA (variadic)
+SDL2 SDL_LogCritical not called by OpenRA (variadic)
+SDL2 SDL_LogDebug not called by OpenRA (variadic)
+SDL2 SDL_LogError not called by OpenRA (variadic)
+SDL2 SDL_LogInfo not called by OpenRA (variadic)
+SDL2 SDL_LogMessage not called by OpenRA (variadic)
+SDL2 SDL_LogMessageV not called by OpenRA (va_list)
+SDL2 SDL_LogVerbose not called by OpenRA (variadic)
+SDL2 SDL_LogWarn not called by OpenRA (variadic)
+SDL2 SDL_SetError not called by OpenRA (variadic)
+# SDL2-CS declares these as returning long; C returns size_t/int, 32-bit on wasm32.
+SDL2 SDL_RWclose not called by OpenRA (64-bit return in SDL2-CS)
+SDL2 SDL_RWread not called by OpenRA (64-bit return in SDL2-CS)
+SDL2 SDL_RWwrite not called by OpenRA (64-bit return in SDL2-CS)
+# Declared int in SDL2-CS, void in C.
+SDL2 SDL_RenderGetViewport not called by OpenRA (int vs void return)
