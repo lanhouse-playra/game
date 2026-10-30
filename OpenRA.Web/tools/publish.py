@@ -33,7 +33,8 @@ The manifest is all an uploader needs; it never decides a header itself:
     contentType       the Content-Type metadata
     contentEncoding   "br" when the object holds the brotli-compressed bytes (source is the .br copy),
                       else null. Object storage like R2 does not negotiate: one object, one encoding
-    cacheControl      the Cache-Control metadata
+    cacheControl      the Cache-Control metadata (immutable for content-addressed names, a day for the
+                      page icons, no-cache for everything else)
     immutable         true for content-addressed names (fingerprint, hash or SHA1 in the name)
     size, sha256      of the bytes to upload (sha1 for game content, from the mod's downloads.yaml;
                       size and sha256 are null until the file exists)
@@ -47,7 +48,7 @@ The manifest is all an uploader needs; it never decides a header itself:
     redirects         [{from, to, status, when}] ("<base without the slash>" -> "<base>", only when the base
                       is a path, not the root)
   neverImmutable    the keys that must never be cached as immutable (they keep their names from build to
-                    build: the page, its scripts, dotnet.js, build.json, the content manifest)
+                    build: the page, its scripts, dotnet.js, build.json, the content manifest, the icons)
 
 Encodings: --encoding br (the default) uploads brotli copies of every compressible file that brotli
 makes at least 5 % smaller (the .NET SDK writes them for _framework and the page's files, build-web.sh
@@ -76,13 +77,21 @@ CONTENT_TYPES = {
     ".dat": "application/octet-stream",
     ".bin": "application/octet-stream",
     ".zip": "application/zip",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".ico": "image/x-icon",
 }
 
-COMPRESSIBLE = {".html", ".js", ".json", ".wasm", ".dat", ".bin"}
+COMPRESSIBLE = {".html", ".js", ".json", ".wasm", ".dat", ".bin", ".svg"}
 SIBLINGS = (".br", ".gz", ".zst")
 
 CACHE_IMMUTABLE = "public, max-age=31536000, immutable"
 CACHE_REVALIDATE = "no-cache"
+# The page icons keep their names from build to build (browsers ask for /favicon.ico by that name), so they
+# cannot be immutable. Nothing depends on their bytes matching the rest of the build, and a stale icon
+# for a day after a change is harmless, so they get a day instead of a revalidation on every visit.
+ICONS = re.compile(r"^(favicon\.(svg|ico)|favicon-[0-9]+\.png|apple-touch-icon\.png)$")
+CACHE_ICON = "public, max-age=86400"
 
 # Hosts the engine itself talks to: the server list, the resource center (maps), mod metadata and
 # icons, the forum (account link). Same list as deploy/webra.caddy.
@@ -195,7 +204,7 @@ def object_entry(key, source_from, source, path, encoding):
         fail(f"no Content-Type for {key}")
 
     immutable = bool(IMMUTABLE.match(key))
-    cache = CACHE_IMMUTABLE if immutable else CACHE_REVALIDATE
+    cache = CACHE_IMMUTABLE if immutable else CACHE_ICON if ICONS.match(key) else CACHE_REVALIDATE
     if encoding:
         # Neither the CDN nor the store may decode or re-encode it: the bytes stay as uploaded.
         cache += ", no-transform"
