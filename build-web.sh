@@ -33,8 +33,20 @@
 #                       page's own address (ws: for http pages, wss: for https). Default "ws", i.e. the
 #                       relay at <page directory>/ws on the same host (deploy/ kit). Dev builds also take ?proxy=
 #   WEBRA_CONTENT_RELAY Path of the relay's content route (official mirror downloads), default "content"
-#   WEBRA_MASTER_RELAY  Path of the relay's master server route (versioncheck, gamenews), default "master";
+#   WEBRA_CONTENT_URL   Where the page downloads the game content instead of the relay: a path on the page's
+#                       own site, relative to the build's directory (e.g. "content": <base>/content/
+#                       ra-quickinstall.<sha1>.zip). The files are not part of the build: tools/fetch-content.py
+#                       writes them once, verified, and the publish manifest lists them. Default: empty (relay)
+#   WEBRA_MASTER_RELAY  The relay's master server route (versioncheck, gamenews): a path, default "master",
+#                       or an https:// URL on another host (the relay must allow the page's origin, -master-cors);
 #                       "none" leaves those requests going to master.openra.net (CORS-blocked)
+#   WEBRA_STORAGE_NAME  IndexedDB database name; default "webra" at the root of a site, "webra:<path>" under a path
+#   WEBRA_META_CSP      1 writes the Content-Security-Policy into index.html as <meta http-equiv> too, for hosts
+#                       that cannot be relied on to send the header (object storage behind a CDN)
+#   WEBRA_PUBLISH_ENCODING  br (default) or identity: the encoding of the publish manifest's objects
+#                       (OpenRA.Web/publish.json, tools/publish.py), for hosts without content negotiation
+#   WEBRA_TARGET        a hosting target: reads OpenRA.Web/hosting/<target>.env (these variables, for one
+#                       site; variables already set in the environment win), e.g. WEBRA_TARGET=lanhouse
 #
 # Usage: ./build-web.sh            build dist/
 #        ./build-web.sh serve      serve dist/ on http://127.0.0.1:8090/
@@ -81,6 +93,24 @@ WEBRA_MODS="${WEBRA_MODS:-ra}"
 WEBRA_EM_CACHE="${WEBRA_EM_CACHE:-${WEB}/obj/emcache}"
 
 [ -z "${WEBRA_VERSION:-}" ] || fail "WEBRA_VERSION is not supported: official builds stamp ${UPSTREAM_TAG}, dev builds (WEBRA_DEV=1) {DEV_VERSION}."
+
+if [ -n "${WEBRA_TARGET:-}" ]; then
+	printf '%s' "${WEBRA_TARGET}" | grep -Eq '^[a-z0-9-]{1,32}$' || fail "WEBRA_TARGET must be a plain name: ${WEBRA_TARGET}"
+	TARGET_ENV="${WEB}/hosting/${WEBRA_TARGET}.env"
+	[ -f "${TARGET_ENV}" ] || fail "no hosting target ${TARGET_ENV}"
+	# KEY=value lines; a variable already set in the environment is kept.
+	while IFS= read -r line || [ -n "${line}" ]; do
+		case "${line}" in ''|'#'*) continue ;; esac
+		key="${line%%=*}"
+		value="${line#*=}"
+		printf '%s' "${key}" | grep -Eq '^WEBRA_[A-Z_]+$' || fail "${TARGET_ENV}: not a WEBRA_ variable: ${line}"
+		[ "${key}" != "WEBRA_TARGET" ] || fail "${TARGET_ENV}: cannot set WEBRA_TARGET"
+		if eval "[ -z \"\${${key}+set}\" ]"; then
+			export "${key}=${value}"
+			echo "${WEBRA_TARGET}: ${key}=${value}"
+		fi
+	done < "${TARGET_ENV}"
+fi
 
 mkdir -p "${OBJ}" "${NATIVE}" "${DEPS}"
 
@@ -358,11 +388,23 @@ if [ "${WEBRA_DEV}" != "1" ]; then
 		|| fail "official builds need a wss:// relay (or a same-origin path); ws:// is only accepted for loopback: ${WEBRA_PROXY_URL}"
 fi
 WEBRA_CONTENT_RELAY="${WEBRA_CONTENT_RELAY:-content}"
+WEBRA_CONTENT_URL="${WEBRA_CONTENT_URL:-}"
 WEBRA_MASTER_RELAY="${WEBRA_MASTER_RELAY:-master}"
 [ "${WEBRA_MASTER_RELAY}" = "none" ] && WEBRA_MASTER_RELAY=""
-for v in "${WEBRA_CONTENT_RELAY}" "${WEBRA_MASTER_RELAY}"; do
-	printf '%s' "${v}" | grep -Eq '^[A-Za-z0-9._~/-]*$' || fail "relay paths must be plain paths: ${v}"
+# (printf of an empty value gives grep no line at all, which it reports as no match: empty values are checked apart.)
+for v in "${WEBRA_CONTENT_RELAY}" "${WEBRA_CONTENT_URL}"; do
+	[ -z "${v}" ] || printf '%s' "${v}" | grep -Eq '^[A-Za-z0-9._~/-]*$' || fail "content paths must be plain paths on the page's own site: ${v}"
 done
+# The master route may live on the relay's own host (a cross-origin request, which the relay allows with
+# -master-cors): an https:// URL, or http:// to loopback in local tests. Official builds never use http off loopback.
+[ -z "${WEBRA_MASTER_RELAY}" ] || printf '%s' "${WEBRA_MASTER_RELAY}" | grep -Eq '^(https?://[][A-Za-z0-9.:_~%/-]+|[A-Za-z0-9._~/-]*)$' \
+	|| fail "WEBRA_MASTER_RELAY must be a path or a plain https:// URL, without query: ${WEBRA_MASTER_RELAY}"
+if [ "${WEBRA_DEV}" != "1" ]; then
+	[ -z "${WEBRA_MASTER_RELAY}" ] || printf '%s' "${WEBRA_MASTER_RELAY}" | grep -Eq '^(https://|http://(127\.0\.0\.1|localhost|\[::1\])[:/]|[A-Za-z0-9._~/-]*$)' \
+		|| fail "official builds need an https:// master route (or a same-origin path): ${WEBRA_MASTER_RELAY}"
+fi
+WEBRA_STORAGE_NAME="${WEBRA_STORAGE_NAME:-}"
+[ -z "${WEBRA_STORAGE_NAME}" ] || printf '%s' "${WEBRA_STORAGE_NAME}" | grep -Eq '^[A-Za-z0-9:/._-]{0,64}$' || fail "WEBRA_STORAGE_NAME must be a plain name: ${WEBRA_STORAGE_NAME}"
 
 # Content-addressed names for the data bundles (engine, maps), so browsers can cache them forever
 # (deploy/webra.caddy: immutable). build.json, which names them, is always revalidated. The name
@@ -381,12 +423,47 @@ fi
 FRAMEWORK_BYTES="$(cat "${DIST}"/_framework/*.br | wc -c)"
 
 cat > "${DIST}/data/build.json" << EOF
-{"version":"${VERSION}","commit":"${COMMIT}","dev":${DEV_BOOL},"configuration":"${CONFIGURATION}","aot":${RUN_AOT},"runtime":"${DOTNET_RUNTIME_VERSION}","mods":"${WEBRA_MODS}","content":$([ -n "${WEBRA_CONTENT_DIR:-}" ] && echo true || echo false),"proxy":"${WEBRA_PROXY_URL}","contentRelay":"${WEBRA_CONTENT_RELAY}","masterRelay":"${WEBRA_MASTER_RELAY}","engineData":"data/engine.${ENGINE_HASH}","mapData":"${MAP_DATA}","contentManifest":"data/content-packages.json","frameworkBytes":${FRAMEWORK_BYTES}}
+{"version":"${VERSION}","commit":"${COMMIT}","dev":${DEV_BOOL},"configuration":"${CONFIGURATION}","aot":${RUN_AOT},"runtime":"${DOTNET_RUNTIME_VERSION}","mods":"${WEBRA_MODS}","target":"${WEBRA_TARGET:-}","content":$([ -n "${WEBRA_CONTENT_DIR:-}" ] && echo true || echo false),"proxy":"${WEBRA_PROXY_URL}","contentRelay":"${WEBRA_CONTENT_RELAY}","contentUrl":"${WEBRA_CONTENT_URL}","masterRelay":"${WEBRA_MASTER_RELAY}","storage":"${WEBRA_STORAGE_NAME}","engineData":"data/engine.${ENGINE_HASH}","mapData":"${MAP_DATA}","contentManifest":"data/content-packages.json","frameworkBytes":${FRAMEWORK_BYTES}}
 EOF
+
+# The Content-Security-Policy also as <meta http-equiv> in the page (WEBRA_META_CSP=1): object storage
+# cannot send headers, and a CDN rule that is missing or wrong would otherwise leave the page without a
+# policy. Same policy as the header (tools/publish.py), minus frame-ancestors, which a meta policy ignores.
+# It goes first in <head>: a meta policy only covers what comes after it.
+if [ "${WEBRA_META_CSP:-0}" = "1" ]; then
+	CSP="$(python3 -I "${SRC_WEB}/tools/publish.py" csp "${DIST}" --meta)"
+	python3 -I - "${DIST}/index.html" "${CSP}" << 'PY'
+import html, sys
+path, csp = sys.argv[1], sys.argv[2]
+page = open(path, encoding="utf-8").read()
+anchor = '<meta charset="utf-8">'
+assert page.count(anchor) == 1, "index.html: no single <meta charset>"
+page = page.replace(anchor, anchor + '\n\t<meta http-equiv="Content-Security-Policy" content="' + html.escape(csp, quote=True) + '">')
+open(path, "w", encoding="utf-8").write(page)
+PY
+	# The SDK's compressed copies of index.html are stale now.
+	rm -f "${DIST}/index.html.br" "${DIST}/index.html.gz"
+	python3 -I -c 'import gzip, sys; d = open(sys.argv[1], "rb").read(); open(sys.argv[1] + ".gz", "wb").write(gzip.compress(d, 9, mtime=0))' "${DIST}/index.html"
+	echo "index.html: Content-Security-Policy in <meta>: ${CSP}"
+fi
 
 # Precompressed copies of the data for the web server (the SDK already compressed _framework and
 # the page's own files). deploy/Caddyfile serves them with "precompressed zstd br gzip".
 python3 -I "${SRC_WEB}/tools/precompress.py" "${DIST}/data"
+
+# Brotli copies of everything compressible, each checked against its file (tools/brotli.mjs): a host
+# without content negotiation (R2) serves exactly one encoding per object, the .br copy.
+find "${DIST}" -type f \( -name '*.html' -o -name '*.js' -o -name '*.json' -o -name '*.wasm' -o -name '*.dat' -o -name '*.bin' \) \
+	! -name 'content.*' -print0 | sort -z | xargs -0 "${EMSDK_NODE}" "${SRC_WEB}/tools/brotli.mjs" > "${OBJ}/brotli.log"
+echo "brotli: $(grep -c '"kept"' "${OBJ}/brotli.log") checked, $(grep -vc '"kept"' "${OBJ}/brotli.log") written"
+
+# The publish manifest, next to dist/: every object to upload with its headers, and what the CDN must add
+# (tools/publish.py). Not for builds with local content, which must never be published.
+PUBLISH_MANIFEST="${WEB}/publish.json"
+rm -f "${PUBLISH_MANIFEST}"
+if [ -z "${WEBRA_CONTENT_DIR:-}" ]; then
+	python3 -I "${SRC_WEB}/tools/publish.py" manifest "${DIST}" "${PUBLISH_MANIFEST}" --encoding "${WEBRA_PUBLISH_ENCODING:-br}"
+fi
 
 echo "Built ${VERSION} (${COMMIT}, dev=${DEV_BOOL}, AOT=${RUN_AOT}) into ${DIST}"
 du -sh "${DIST}"
