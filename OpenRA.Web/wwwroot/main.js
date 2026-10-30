@@ -81,12 +81,19 @@ function notify(text) {
 	ui.notice.hidden = false;
 }
 
+// Closes the notice if it still shows this text (the problem went away).
+function dismiss(text) {
+	if (!ui.notice.hidden && ui.noticeText.textContent === text)
+		ui.notice.hidden = true;
+}
+
 const NOTICES = {
 	quota: 'The browser storage for this site is full, so settings, replays and maps are not being saved any more. Free some space (for example, delete old replays in the game) or use "Reset saved data" on the loading screen.',
 	write: 'Saving settings, replays or maps in this browser failed; changes may be lost when the page closes.',
 	restore: 'The saved settings could not be read, so the game started with default settings. "Reset saved data" on the loading screen clears them.',
 	skipped: 'Some saved files could not be restored and were skipped.',
-	maps: 'The game\'s built-in maps could not be downloaded. Until the page is reloaded, the map list only holds maps from the OpenRA resource center, and a lobby on a built-in map shows it as missing. Reload the page to try again.',
+	maps: 'The game\'s built-in maps could not be downloaded yet; the page keeps trying once a minute. Until they arrive, the map list holds only one built-in map and the maps downloaded from the OpenRA resource center, and a lobby on another built-in map shows that map as missing.',
+	mapsBroken: 'The game\'s built-in maps could not be added. Reload the page to try again.',
 	clock: 'This browser blocked the background clock the game uses in hidden tabs. If you switch to another tab or window during a multiplayer match, the game slows down for every player: keep this tab visible while you play.',
 };
 
@@ -585,7 +592,11 @@ function createNetModule(getTransport) {
 // The maps are added to the engine's map cache a few at a time between frames, never during a match
 // or a replay; in a hidden tab the frame clock paces them (the player may wait in another tab).
 const MAP_LOAD_BUDGET_MS = 8;
+// Download attempts: three over about 15 s, then the player is told and the page keeps trying once a
+// minute, and at once when the browser reports that the network is back (a phone switching from Wi-Fi
+// to mobile data), for as long as it is open.
 const MAP_DOWNLOAD_ATTEMPTS = 3;
+const MAP_RETRY_INTERVAL_MS = 60000;
 
 async function loadDeferredMaps(prefix, FS, host, sleep) {
 	const state = WebRA.maps = { state: 'downloading', received: 0, total: 0, maps: 0, loaded: 0, startedMs: now() };
@@ -598,10 +609,12 @@ async function loadDeferredMaps(prefix, FS, host, sleep) {
 	};
 
 	const show = () => {
-		const busy = state.state === 'downloading' || state.state === 'loading';
+		const busy = state.state === 'downloading' || state.state === 'retrying' || state.state === 'loading';
 		ui.mapsStatus.hidden = !busy || inMatch();
 		if (state.state === 'loading')
 			ui.mapsStatus.textContent = `Adding maps: ${state.loaded} / ${state.maps}`;
+		else if (state.state === 'retrying')
+			ui.mapsStatus.textContent = `Maps download failed, trying again in ${Math.max(0, Math.ceil((state.retryAt - now()) / 1000))} s`;
 		else
 			ui.mapsStatus.textContent = state.total ? `Downloading maps: ${MB(state.received)} / ${MB(state.total)} MB` : 'Downloading maps';
 	};
@@ -616,6 +629,8 @@ async function loadDeferredMaps(prefix, FS, host, sleep) {
 		// the file system holds its own copy.
 		let files = null;
 		for (let attempt = 1; !files;) {
+			if (WebRA.phase !== 'running')
+				return;
 			while (inMatch()) {
 				if (WebRA.phase !== 'running')
 					return;
@@ -649,9 +664,21 @@ async function loadDeferredMaps(prefix, FS, host, sleep) {
 				}
 
 				WebRA.errors.push(`maps (attempt ${attempt}): ${e && e.message || e}`);
-				if (attempt >= MAP_DOWNLOAD_ATTEMPTS)
-					throw e;
-				await sleep(5000 * attempt);
+				console.warn(`[webra] maps download attempt ${attempt} failed:`, e);
+				if (attempt === MAP_DOWNLOAD_ATTEMPTS)
+					notify(NOTICES.maps);
+				const delay = attempt < MAP_DOWNLOAD_ATTEMPTS ? 5000 * attempt : MAP_RETRY_INTERVAL_MS;
+				state.state = 'retrying';
+				state.retryAt = now() + delay;
+				show();
+				let online = null;
+				await Promise.race([sleep(delay), new Promise(resolve => {
+					online = resolve;
+					window.addEventListener('online', online);
+				})]);
+				window.removeEventListener('online', online);
+				state.state = 'downloading';
+				show();
 				attempt++;
 				continue;
 			} finally {
@@ -703,12 +730,13 @@ async function loadDeferredMaps(prefix, FS, host, sleep) {
 
 		state.state = 'ready';
 		state.readyMs = now();
+		dismiss(NOTICES.maps);
 		console.log(`[webra] ${state.maps} maps added: downloaded at ${state.downloadedMs} ms, ready at ${state.readyMs} ms`);
 	} catch (e) {
 		state.state = 'failed';
 		state.error = String(e && e.message || e);
 		console.error('[webra] maps', e);
-		notify(NOTICES.maps);
+		notify(NOTICES.mapsBroken);
 	} finally {
 		clearInterval(statusTimer);
 		show();
