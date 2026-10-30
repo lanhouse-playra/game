@@ -357,12 +357,15 @@ for v in "${WEBRA_CONTENT_RELAY}" "${WEBRA_MASTER_RELAY}"; do
 done
 
 # Content-addressed names for the data bundles (engine, maps), so browsers can cache them forever
-# (deploy/webra.caddy: immutable). build.json, which names them, is always revalidated.
-ENGINE_HASH="$(sha256sum "${DIST}/data/engine.bin" | cut -c 1-16)"
+# (deploy/webra.caddy: immutable). build.json, which names them, is always revalidated. The name
+# covers the index too: a build that only changes paths (or adds an empty file) keeps the same .bin
+# bytes, and an index cached under the old name would not match it.
+bundle_hash() { (sha256sum < "$1.bin"; sha256sum < "$1.json") | sha256sum | cut -c 1-16; }
+ENGINE_HASH="$(bundle_hash "${DIST}/data/engine")"
 mv "${DIST}/data/engine.bin" "${DIST}/data/engine.${ENGINE_HASH}.bin"
 mv "${DIST}/data/engine.json" "${DIST}/data/engine.${ENGINE_HASH}.json"
 if [ -f "${DIST}/data/maps.bin" ]; then
-	MAPS_HASH="$(sha256sum "${DIST}/data/maps.bin" | cut -c 1-16)"
+	MAPS_HASH="$(bundle_hash "${DIST}/data/maps")"
 	mv "${DIST}/data/maps.bin" "${DIST}/data/maps.${MAPS_HASH}.bin"
 	mv "${DIST}/data/maps.json" "${DIST}/data/maps.${MAPS_HASH}.json"
 	MAP_DATA="data/maps.${MAPS_HASH}"
