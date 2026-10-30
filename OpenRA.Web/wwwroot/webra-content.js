@@ -193,6 +193,20 @@ export const sitePackageUrl = base => (manifest, pkg) => {
 	return `${base.replace(/\/$/, '')}/${encodeURIComponent(pkg.file)}`;
 };
 
+// True when the store holds an installation of this manifest's packages (the record ensureContent
+// writes). Reads only that record, not the files: the start screen asks before the game starts.
+export async function contentStored(manifest, store) {
+	if (!store)
+		return false;
+
+	try {
+		const meta = await store.get('content', `#installed/${manifest.mod}`);
+		return !!meta && meta.id === installId(plan(manifest));
+	} catch {
+		return false;
+	}
+}
+
 // Returns { files: Map(path -> bytes), source: 'cache' | 'download', ... }.
 // packageUrl(manifest, package): where to download a package from (relayPackageUrl, sitePackageUrl).
 // cache: the fetch cache mode. The relay's answers are not cacheable ('no-store'); a copy on our site has

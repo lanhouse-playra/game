@@ -44,6 +44,11 @@
 #   WEBRA_META_CSP      1 writes the Content-Security-Policy into index.html as <meta http-equiv> too, for hosts
 #                       that cannot be relied on to send the header (object storage behind a CDN)
 #   WEBRA_PAGE_TITLE    the page's <title>, e.g. the site's name for a hosting target; default "OpenRA"
+#   WEBRA_SPLASH        a start screen, shown before the game starts: the name of OpenRA.Web/hosting/<name>-splash.html
+#                       (markup put into index.html), with its logo OpenRA.Web/hosting/<name>-logo.svg or .png if
+#                       there is one. Default: none, the page starts the game at once
+#   WEBRA_SOURCE_URL    the repository the start screen's "source code" link points into, default
+#                       https://github.com/openra-web/game: the link is <url>/tree/<commit>, the exact source of the build
 #   WEBRA_PUBLISH_ENCODING  br (default) or identity: the encoding of the publish manifest's objects
 #                       (OpenRA.Web/publish.json, tools/publish.py), for hosts without content negotiation
 #   WEBRA_TARGET        a hosting target: reads OpenRA.Web/hosting/<target>.env (these variables, for one
@@ -471,6 +476,53 @@ PY
 	rm -f "${DIST}/index.html.br" "${DIST}/index.html.gz"
 	python3 -I -c 'import gzip, sys; d = open(sys.argv[1], "rb").read(); open(sys.argv[1] + ".gz", "wb").write(gzip.compress(d, 9, mtime=0))' "${DIST}/index.html"
 	echo "index.html: Content-Security-Policy in <meta>: ${CSP}"
+fi
+
+# The start screen (WEBRA_SPLASH): hosting/<name>-splash.html goes into index.html, which then opens on it
+# (body data-phase="splash"; webra-splash.js). The build fills in the version and the source link, which names
+# the commit the build was made from (the GPL's corresponding source; a dev build of a dirty tree links to the
+# commit it started from, and says so here). Its logo
+# slot (between <!-- logo --> and <!-- /logo -->) holds a text until hosting/<name>-logo.svg or .png exists:
+# then the file is copied as splash-logo.<ext> and shown instead.
+if [ -n "${WEBRA_SPLASH:-}" ]; then
+	printf '%s' "${WEBRA_SPLASH}" | grep -Eq '^[a-z0-9-]{1,32}$' || fail "WEBRA_SPLASH must be a plain name: ${WEBRA_SPLASH}"
+	SPLASH_HTML="${SRC_WEB}/hosting/${WEBRA_SPLASH}-splash.html"
+	[ -f "${SPLASH_HTML}" ] || fail "no start screen ${SPLASH_HTML}"
+	WEBRA_SOURCE_URL="${WEBRA_SOURCE_URL:-https://github.com/openra-web/game}"
+	printf '%s' "${WEBRA_SOURCE_URL}" | grep -Eq '^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~/-]*)?$' || fail "WEBRA_SOURCE_URL must be a plain https:// URL: ${WEBRA_SOURCE_URL}"
+	SOURCE_COMMIT="${COMMIT%-dirty}"
+	printf '%s' "${SOURCE_COMMIT}" | grep -Eq '^[0-9a-f]{40}$' || fail "the start screen links to the build's commit, and this build has none (${COMMIT})"
+	SOURCE_LINK="${WEBRA_SOURCE_URL%/}/tree/${SOURCE_COMMIT}"
+	[ "${SOURCE_COMMIT}" = "${COMMIT}" ] || echo "WARNING: dirty working tree: the start screen's source link names ${SOURCE_COMMIT}, which lacks the uncommitted changes" >&2
+	SPLASH_LOGO=""
+	for ext in svg png; do
+		if [ -f "${SRC_WEB}/hosting/${WEBRA_SPLASH}-logo.${ext}" ]; then
+			SPLASH_LOGO="splash-logo.${ext}"
+			cp "${SRC_WEB}/hosting/${WEBRA_SPLASH}-logo.${ext}" "${DIST}/${SPLASH_LOGO}"
+			break
+		fi
+	done
+	python3 -I - "${DIST}/index.html" "${SPLASH_HTML}" "${VERSION}" "${SOURCE_LINK}" "${SPLASH_LOGO}" << 'PY'
+import html, re, sys
+path, fragment_path, version, source, logo = sys.argv[1:]
+page = open(path, encoding="utf-8").read()
+fragment = open(fragment_path, encoding="utf-8").read()
+for anchor in ("\t<!-- splash -->\n", '<body data-phase="loading">'):
+    assert page.count(anchor) == 1, f"index.html: no single {anchor!r}"
+for token in ("@VERSION@", "@SOURCE_URL@", "<!-- logo -->", "<!-- /logo -->"):
+    assert fragment.count(token) == 1, f"{fragment_path}: no single {token}"
+fragment = fragment.replace("@VERSION@", html.escape(version)).replace("@SOURCE_URL@", html.escape(source, quote=True))
+if logo:
+    # The text between the markers names the site: it becomes the image's alternative text.
+    slot = re.search(r"<!-- logo -->(.*)<!-- /logo -->", fragment, re.S)
+    text = html.escape(html.unescape(re.sub(r"<[^>]*>", "", slot.group(1))).strip(), quote=True)
+    fragment = fragment[:slot.start()] + f'<img src="{logo}" alt="{text}">' + fragment[slot.end():]
+page = page.replace("\t<!-- splash -->\n", fragment).replace('<body data-phase="loading">', '<body data-phase="splash">')
+open(path, "w", encoding="utf-8").write(page)
+PY
+	rm -f "${DIST}/index.html.br" "${DIST}/index.html.gz"
+	python3 -I -c 'import gzip, sys; d = open(sys.argv[1], "rb").read(); open(sys.argv[1] + ".gz", "wb").write(gzip.compress(d, 9, mtime=0))' "${DIST}/index.html"
+	echo "index.html: start screen ${SPLASH_HTML}${SPLASH_LOGO:+, logo ${SPLASH_LOGO}}, source ${SOURCE_LINK}"
 fi
 
 # Brotli copies of everything compressible, each checked against its file (tools/brotli.mjs): a host

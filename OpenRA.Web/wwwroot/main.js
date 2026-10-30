@@ -5,7 +5,8 @@
 // the License, or (at your option) any later version. For more
 // information, see COPYING.
 
-// Browser loader for OpenRA.Web. In parallel: starts the .NET runtime, downloads the engine data,
+// Browser loader for OpenRA.Web. A hosting target's start screen comes first, if the build has one
+// (webra-splash.js); then, in parallel: starts the .NET runtime, downloads the engine data,
 // and installs the game content (from IndexedDB, or on the first visit from the official OpenRA
 // mirrors through our relay). Then it restores the saved support directory (settings, profile,
 // replays, maps), boots the engine and drives its frame loop. State is exposed on window.WebRA and
@@ -15,6 +16,7 @@ import { dotnet } from './_framework/dotnet.js';
 import { Store, SupportSync, resetSavedData } from './webra-store.js';
 import { ensureContent, relayPackageUrl, sitePackageUrl } from './webra-content.js';
 import * as page from './webra-page.js';
+import { showSplash } from './webra-splash.js';
 
 const params = new URLSearchParams(location.search);
 
@@ -40,6 +42,8 @@ let devBuild = false;
 const debugParams = name => devBuild ? params.getAll(name) : [];
 const debugParam = name => devBuild ? params.get(name) : null;
 const canvas = document.getElementById('canvas');
+// The start screen, in builds with one (build-web.sh WEBRA_SPLASH).
+const splash = document.getElementById('splash');
 const ui = {
 	step: document.getElementById('step'),
 	bar: document.getElementById('bar'),
@@ -148,6 +152,28 @@ async function restart() {
 	}
 
 	console.warn('[webra] restart: the settings could not be saved, so the page was not reloaded');
+}
+
+// Quit in the game's menu. With a start screen, the page goes back to it: the engine cannot start again
+// in the same page, so it reloads, once what the game saved last is in IndexedDB. If saving fails, the
+// storage notice is up and the page stays: a reload would lose it.
+async function exited() {
+	if (!splash) {
+		setPhase('exited', 'The game was closed. Reload the page to play again.');
+		return;
+	}
+
+	setPhase('exited', 'Returning to the start screen');
+	try {
+		if (!WebRA.support || await WebRA.support.flush()) {
+			location.reload();
+			return;
+		}
+	} catch (e) {
+		WebRA.errors.push(`quit: ${e}`);
+	}
+
+	ui.step.textContent = 'The game was closed. Reload the page to play again.';
 }
 
 // Lets the page repaint (status text) before a long synchronous call. A hidden page gets no animation
@@ -287,6 +313,14 @@ function stageFiles(FS, files) {
 	return n;
 }
 
+// The content manifest, downloaded once (the start screen reads it too).
+let contentManifestRequest = null;
+const contentManifest = () => contentManifestRequest ||= fetch(at(WebRA.build.contentManifest), { cache: 'no-cache' }).then(r => {
+	if (!r.ok)
+		throw new Error(`Failed to download ${WebRA.build.contentManifest}: ${r.status}`);
+	return r.json();
+});
+
 // The game content: from IndexedDB, or downloaded from our own site (build.contentUrl) or through the
 // relay (build.contentRelay), or, in local test builds, from data/content.*.
 async function loadContent(build, store) {
@@ -298,11 +332,7 @@ async function loadContent(build, store) {
 		return { bundle };
 	}
 
-	const manifest = await fetch(at(build.contentManifest), { cache: 'no-cache' }).then(r => {
-		if (!r.ok)
-			throw new Error(`Failed to download ${build.contentManifest}: ${r.status}`);
-		return r.json();
-	});
+	const manifest = await contentManifest();
 
 	const fromSite = Boolean(build.contentUrl);
 	const result = await ensureContent({
@@ -474,8 +504,9 @@ function createWorkerClock(onTick) {
 
 // Returns sleep(ms), a timeout for other page work (the maps loader) that also ends at the first clock
 // tick after its time: browsers throttle main-thread timers in hidden tabs (one wake-up per second, one
-// per minute after five minutes in Chrome), the clock's worker timer is not.
-function startFrameLoop(host) {
+// per minute after five minutes in Chrome), the clock's worker timer is not. onExit runs once the game
+// has quit.
+function startFrameLoop(host, onExit) {
 	let stopped = false;
 	let rafPending = false;
 	const stats = WebRA.frameStats = { visibleFrames: 0, logicFrames: 0, skippedLogicFrames: 0, hiddenFrames: 0, visibilityChanges: 0 };
@@ -490,7 +521,7 @@ function startFrameLoop(host) {
 			if (!(render === 'logic' ? host.LogicFrame() : host.Frame(render))) {
 				stopped = true;
 				clock.stop();
-				setPhase('exited', 'The game was closed. Reload the page to play again.');
+				onExit();
 			}
 		} catch (e) {
 			stopped = true;
@@ -812,7 +843,7 @@ function watchFullscreenButton() {
 const SAVED_FOR_PLAYER = ['/support/Screenshots/', '/support/Replays/'];
 
 async function main() {
-	setPhase('loading', 'Starting');
+	setPhase(splash ? 'splash' : 'loading', 'Starting');
 	ui.retry.addEventListener('click', () => location.reload());
 	ui.reset.addEventListener('click', () => resetSaved());
 	ui.noticeClose.addEventListener('click', () => {
@@ -836,12 +867,14 @@ async function main() {
 	page.captureKeys({ isActive: () => WebRA.phase === 'running', keepDevTools: devBuild });
 	page.clampMouseAtEdges(canvas, () => WebRA.phase === 'running');
 
-	// ?w= and ?h= (render size for tests) are clamped: a crafted link must not make the tab
-	// allocate a huge canvas.
-	const sizeParam = name => Math.min(4096, Number(params.get(name)) || 0);
-	const size = WebRA.renderSize = page.renderSize(sizeParam('w') || window.innerWidth, sizeParam('h') || window.innerHeight);
-	page.fitCanvas(canvas, size);
 	const proxy = relayUrl(build);
+	const storePromise = Store.open(storageName);
+	if (splash) {
+		WebRA.splash = {};
+		const choice = await showSplash(splash, { build, at, storePromise, contentManifest, state: WebRA.splash });
+		WebRA.splash.fullscreen = choice.fullscreen;
+		setPhase('loading', 'Starting');
+	}
 
 	// Extra Mono runtime options for experiments, e.g. ?rt=--no-jiterpreter-traces-enabled
 	// and environment variables, e.g. ?env=MONO_GC_PARAMS=nursery-size=64m
@@ -870,7 +903,6 @@ async function main() {
 	}
 
 	setPhase('downloading', 'Downloading');
-	const storePromise = Store.open(storageName);
 	// A replay launched at boot (dev builds: ?arg=Launch.Replay=...) needs its map before the engine
 	// starts: then the maps package is part of the loading screen, as before it was split off.
 	const mapsAtBoot = Boolean(build.mapData) && debugParams('arg').some(a => a.startsWith('Launch.Replay='));
@@ -901,7 +933,7 @@ async function main() {
 	// The engine shows errors it recovered from (a UI action that failed) as a notice, and asks for a
 	// restart ("Restart Now" in its settings) through restart().
 	setModuleImports('webra-page', { notify: text => notify(text, true), restart: () => restart() });
-	page.guardLeaving(() => net.openCount() > 0);
+	page.guardLeaving(() => net.openCount() > 0 && WebRA.phase !== 'exited');
 
 	setPhase('staging', 'Installing');
 	const FS = Module.FS;
@@ -938,6 +970,12 @@ async function main() {
 
 	setPhase('booting', 'Starting the game (the page does not respond for a few seconds)');
 	await nextPaint();
+	// The render size is fixed at boot, so it is taken now, from the window as it is (fullscreen when
+	// the player chose it). ?w= and ?h= (render size for tests) are clamped: a crafted link must not
+	// make the tab allocate a huge canvas.
+	const sizeParam = name => Math.min(4096, Number(params.get(name)) || 0);
+	const size = WebRA.renderSize = page.renderSize(sizeParam('w') || window.innerWidth, sizeParam('h') || window.innerHeight);
+	page.fitCanvas(canvas, size);
 	host.Boot(bootArguments(size, proxy));
 	WebRA.host = host;
 
@@ -948,7 +986,7 @@ async function main() {
 	setPhase('running');
 	canvas.focus();
 	watchFullscreenButton();
-	const { sleep } = startFrameLoop(host);
+	const { sleep } = startFrameLoop(host, exited);
 	if (build.mapData && !mapsBundle)
 		loadDeferredMaps(at(build.mapData), FS, host, sleep);
 }

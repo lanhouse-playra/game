@@ -50,21 +50,38 @@ export function isFullscreen() {
 	return !!document.fullscreenElement;
 }
 
-export async function toggleFullscreen() {
+// Resolves to true once the page is fullscreen, false if the browser refused or cannot (iPhone Safari
+// has no fullscreen for pages). Must be called inside a user gesture: the request is made before the
+// first await.
+export async function enterFullscreen() {
+	const element = document.documentElement;
+	if (!element.requestFullscreen)
+		return false;
+
 	try {
-		if (isFullscreen()) {
-			await document.exitFullscreen();
-			return;
-		}
-
-		await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
-
-		// Chrome: in fullscreen, keyboard lock gives the game Escape and the browser shortcuts
-		// (holding Escape still leaves fullscreen).
-		if (navigator.keyboard && navigator.keyboard.lock)
-			navigator.keyboard.lock().catch(() => {});
+		await element.requestFullscreen({ navigationUI: 'hide' });
 	} catch (e) {
 		console.warn('[webra] fullscreen failed:', e);
+		return false;
+	}
+
+	// Chrome: in fullscreen, keyboard lock gives the game Escape and the browser shortcuts
+	// (holding Escape still leaves fullscreen).
+	if (navigator.keyboard && navigator.keyboard.lock)
+		navigator.keyboard.lock().catch(() => {});
+	return true;
+}
+
+export async function toggleFullscreen() {
+	if (!isFullscreen()) {
+		await enterFullscreen();
+		return;
+	}
+
+	try {
+		await document.exitFullscreen();
+	} catch (e) {
+		console.warn('[webra] leaving fullscreen failed:', e);
 	}
 }
 
