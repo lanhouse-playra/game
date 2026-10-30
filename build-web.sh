@@ -302,7 +302,8 @@ cp -a "${PUBLISH}/wwwroot/." "${DIST}/"
 ENGINE_STAGE="${OBJ}/stage/engine"
 rm -rf "${ENGINE_STAGE}"
 mkdir -p "${ENGINE_STAGE}/mods"
-cp -a "${SRC}/glsl" "${SRC}/global mix database.dat" "${ENGINE_STAGE}/"
+# AUTHORS is the engine tab of Extras > Credits (ModCredits.EngineCreditsFile).
+cp -a "${SRC}/glsl" "${SRC}/global mix database.dat" "${SRC}/AUTHORS" "${ENGINE_STAGE}/"
 cp -a "${SRC}/mods/common" "${ENGINE_STAGE}/mods/"
 for mod in ${WEBRA_MODS}; do
 	cp -a "${SRC}/mods/${mod}" "${ENGINE_STAGE}/mods/"
