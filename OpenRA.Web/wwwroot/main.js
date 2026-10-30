@@ -111,8 +111,31 @@ async function resetSaved() {
 	location.reload();
 }
 
-// Lets the page repaint (status text) before a long synchronous call.
-const nextPaint = () => new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+// Lets the page repaint (status text) before a long synchronous call. A hidden page gets no animation
+// frames at all, so it does not wait for one: a tab opened or restored in the background (session
+// restore after a browser crash) used to stop at "Starting the game" until the player looked at it,
+// and a test browser attached to such a tab waited for minutes. A visible page can also go without
+// animation frames for a while (GPU process restart, offscreen iframe), so the wait is capped.
+const NEXT_PAINT_MAX_WAIT_MS = 250;
+const nextPaint = () => new Promise(resolve => {
+	const started = performance.now();
+	let done = false;
+	const finish = how => {
+		if (done)
+			return;
+		done = true;
+		WebRA.load.bootPaint = { how, ms: Math.round(performance.now() - started) };
+		resolve();
+	};
+
+	if (document.hidden) {
+		setTimeout(() => finish('hidden'), 0);
+		return;
+	}
+
+	requestAnimationFrame(() => setTimeout(() => finish('frame'), 0));
+	setTimeout(() => finish('timeout'), NEXT_PAINT_MAX_WAIT_MS);
+});
 
 const MB = n => (n / 1048576).toFixed(1);
 
