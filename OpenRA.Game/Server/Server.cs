@@ -138,6 +138,7 @@ namespace OpenRA.Server
 
 		readonly int randomSeed;
 		readonly List<TcpListener> listeners = [];
+		readonly IPNetwork[] trustedProxies;
 		readonly TypeDictionary serverTraits = [];
 		readonly PlayerDatabase playerDatabase;
 
@@ -240,6 +241,9 @@ namespace OpenRA.Server
 		{
 			Log.AddChannel("server", "server.log", true);
 
+			// Parsed before the listeners start, which read it.
+			trustedProxies = ProxyProtocol.ParseTrustedProxies(settings.TrustedProxies);
+
 			SocketException lastException = null;
 			foreach (var endpoint in endpoints)
 			{
@@ -273,7 +277,11 @@ namespace OpenRA.Server
 							{
 								try
 								{
-									events.Add(new ConnectionConnectEvent(listener.AcceptSocket()));
+									var socket = listener.AcceptSocket();
+									if (ProxyProtocol.IsTrusted(trustedProxies, socket.RemoteEndPoint))
+										AcceptProxiedSocket(socket);
+									else
+										events.Add(new ConnectionConnectEvent(socket, socket.RemoteEndPoint));
 								}
 								catch (Exception)
 								{
@@ -423,16 +431,53 @@ namespace OpenRA.Server
 			events.Add(new ConnectionDisconnectEvent(conn));
 		}
 
-		void AcceptConnection(Socket socket)
+		// A trusted proxy names the client in a PROXY protocol header before any game data. Read it off
+		// the listener and server threads, so that a slow or silent proxy connection delays nobody else.
+		void AcceptProxiedSocket(Socket socket)
+		{
+			var proxy = socket.RemoteEndPoint;
+			Task.Run(async () =>
+			{
+				// This task owns the socket until the server loop takes it: nothing above it would
+				// close the socket or log the error.
+				var handedOver = false;
+				try
+				{
+					var (client, error) = await ProxyProtocol.ReadClientEndPointAsync(socket, ProxyProtocol.HeaderTimeout);
+					if (client == null)
+						Log.Write("server", $"Closing connection from trusted proxy {proxy}: {error}.");
+					else if (State != ServerState.ShuttingDown)
+					{
+						Log.Write("server", $"Connection from {client} through trusted proxy {proxy}.");
+						events.Add(new ConnectionConnectEvent(socket, client));
+						handedOver = true;
+					}
+				}
+				catch (Exception e)
+				{
+					Log.Write("server", $"Closing connection from trusted proxy {proxy}: unexpected error while reading the PROXY protocol header: {e}");
+				}
+				finally
+				{
+					if (!handedOver)
+						socket.Dispose();
+				}
+			});
+		}
+
+		void AcceptConnection(Socket socket, EndPoint endPoint)
 		{
 			if (State != ServerState.WaitingPlayers)
+			{
+				socket.Dispose();
 				return;
+			}
 
 			// Validate player identity by asking them to sign a random blob of data
 			// which we can then verify against the player public key database
 			var token = Convert.ToBase64String(OpenRA.Exts.MakeArray(256, _ => (byte)Random.Next()));
 
-			var newConn = new Connection(this, socket, token);
+			var newConn = new Connection(this, socket, endPoint, token);
 			try
 			{
 				// Send handshake and client index.
@@ -1517,14 +1562,16 @@ namespace OpenRA.Server
 		sealed class ConnectionConnectEvent : IServerEvent
 		{
 			readonly Socket socket;
-			public ConnectionConnectEvent(Socket socket)
+			readonly EndPoint endPoint;
+			public ConnectionConnectEvent(Socket socket, EndPoint endPoint)
 			{
 				this.socket = socket;
+				this.endPoint = endPoint;
 			}
 
 			void IServerEvent.Invoke(Server server)
 			{
-				server.AcceptConnection(socket);
+				server.AcceptConnection(socket, endPoint);
 			}
 		}
 
