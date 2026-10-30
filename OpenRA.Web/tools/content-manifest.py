@@ -15,6 +15,11 @@ and its Downloads files, the same data the desktop content installer uses: the r
 with their test files, the quick download package, and for each download its SHA1, mirror list
 URL and the files it extracts. The page installs content from this manifest, and the relay serves
 only the packages listed in it (mirror list host, exact package hashes).
+
+Each download also gets a "file" name, <mod>-<download id>.<sha1>.zip: the name under which a copy
+published on our own site is found (tools/fetch-content.py writes it; the page asks for it when the
+build has WEBRA_CONTENT_URL). The SHA1 in the name makes it content-addressed, so it can be cached as
+immutable.
 """
 
 import json
@@ -82,11 +87,8 @@ def support_path(p):
     return "/support/" + rel
 
 
-def main():
-    if len(sys.argv) != 4:
-        sys.exit(__doc__)
-
-    engine, mod, out = sys.argv[1:]
+def build_manifest(engine, mod):
+    """The manifest of mod in the engine tree engine (also used by fetch-content.py)."""
     mod_yaml = parse_miniyaml(os.path.join(engine, "mods", mod, "mod.yaml"))
     content_mod = None
     for k, v, c in mod_yaml:
@@ -140,6 +142,8 @@ def main():
                 sys.exit(f"download {k}: bad SHA1 {sha1!r}")
             if not re.fullmatch(r"https://[A-Za-z0-9.-]+/[A-Za-z0-9._/-]+", mirrors or ""):
                 sys.exit(f"download {k}: bad MirrorList {mirrors!r}")
+            if not re.fullmatch(r"[A-Za-z0-9_-]+", k) or dtype != "ZipFile":
+                sys.exit(f"download {k}: only ZipFile downloads with plain identifiers are supported (type {dtype!r})")
 
             downloads.append({
                 "id": k,
@@ -147,10 +151,11 @@ def main():
                 "type": dtype,
                 "sha1": sha1,
                 "mirrorList": mirrors,
+                "file": f"{content_for or mod}-{k}.{sha1}.zip",
                 "extract": [[support_path(target), source] for target, source, _ in extract or []],
             })
 
-    manifest = {
+    return {
         "mod": content_for or mod,
         "contentMod": content_mod,
         "quickDownload": quick,
@@ -158,6 +163,14 @@ def main():
         "packages": downloads,
     }
 
+
+def main():
+    if len(sys.argv) != 4:
+        sys.exit(__doc__)
+
+    engine, mod, out = sys.argv[1:]
+    manifest = build_manifest(engine, mod)
+    required, downloads, quick = manifest["required"], manifest["packages"], manifest["quickDownload"]
     with open(out, "w") as f:
         json.dump(manifest, f, indent=1)
         f.write("\n")

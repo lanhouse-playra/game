@@ -7,9 +7,13 @@
 
 // Installs the mod's game content in the browser, as the desktop content installer's quick install
 // does: the packages named in data/content-packages.json (generated from the mod's own
-// installer definitions) are downloaded from the official OpenRA mirrors, through our relay because
-// the mirrors send no CORS headers, checked against the SHA1 the mod defines, and the listed files
+// installer definitions) are downloaded, checked against the SHA1 the mod defines, and the listed files
 // are extracted. They are kept in IndexedDB, so later visits load them from there.
+//
+// Where a package comes from is the caller's choice (packageUrl): a copy published on the page's own
+// site under the package's "file" name (tools/fetch-content.py writes it, verified, from the official
+// mirrors), or our relay's content route, which fetches it from the official OpenRA mirrors (they
+// send no CORS headers, so a page cannot read them directly).
 
 const sha1Hex = async data => [...new Uint8Array(await crypto.subtle.digest('SHA-1', data))]
 	.map(b => b.toString(16).padStart(2, '0')).join('');
@@ -51,11 +55,11 @@ class RelayRefusal extends Error {
 
 const inMinutes = seconds => seconds < 90 ? `${Math.max(1, Math.round(seconds))} s` : `${Math.round(seconds / 60)} min`;
 
-async function download(url, onProgress) {
+async function download(url, onProgress, cache) {
 	let lastError;
 	for (let attempt = 1; attempt <= 3; attempt++) {
 		try {
-			const response = await fetch(url, { cache: 'no-store' });
+			const response = await fetch(url, { cache });
 			if (!response.ok) {
 				if ((response.headers.get('content-type') || '').includes('application/json')) {
 					const body = await response.json().catch(() => ({}));
@@ -177,9 +181,25 @@ async function unzip(data, wanted) {
 	return out;
 }
 
+// The relay's content route for a package: <relayBase>/<mod>/<package id>, e.g. https://host/content/ra/quickinstall.
+export const relayPackageUrl = relayBase => (manifest, pkg) =>
+	`${relayBase.replace(/\/$/, '')}/${encodeURIComponent(manifest.mod)}/${encodeURIComponent(pkg.id)}`;
+
+// A copy on our own site: <base>/<file>, e.g. https://host/webra/content/ra-quickinstall.<sha1>.zip. The
+// manifest names the file (content-manifest.py), so the page and tools/fetch-content.py agree on it.
+export const sitePackageUrl = base => (manifest, pkg) => {
+	if (!pkg.file)
+		throw new Error(`The content manifest names no file for ${pkg.id}`);
+	return `${base.replace(/\/$/, '')}/${encodeURIComponent(pkg.file)}`;
+};
+
 // Returns { files: Map(path -> bytes), source: 'cache' | 'download', ... }.
-// relayBase: URL of the relay's content route (e.g. https://host/content).
-export async function ensureContent({ manifest, store, relayBase, onProgress = () => {}, onStatus = () => {} }) {
+// packageUrl(manifest, package): where to download a package from (relayPackageUrl, sitePackageUrl).
+// cache: the fetch cache mode. The relay's answers are not cacheable ('no-store'); a copy on our site has
+// a content-addressed name and is cached as immutable ('default'), which spares a second download when
+// IndexedDB is not available. A cached copy that fails the SHA1 check is downloaded once more past the
+// HTTP cache.
+export async function ensureContent({ manifest, store, packageUrl, cache = 'no-store', onProgress = () => {}, onStatus = () => {} }) {
 	const packages = plan(manifest);
 	const id = installId(packages);
 	const required = manifest.required.flatMap(r => r.testFiles);
@@ -206,10 +226,17 @@ export async function ensureContent({ manifest, store, relayBase, onProgress = (
 	let downloaded = 0;
 	const mirrors = [];
 	for (const [i, pkg] of packages.entries()) {
-		const url = `${relayBase.replace(/\/$/, '')}/${encodeURIComponent(manifest.mod)}/${encodeURIComponent(pkg.id)}`;
+		const url = packageUrl(manifest, pkg);
 		onStatus(`Downloading ${pkg.title}${packages.length > 1 ? ` (${i + 1}/${packages.length})` : ''}`);
-		const { data, mirror } = await download(url, (received, total, mirror) => onProgress({ package: pkg.id, received, total, mirror }));
-		const hash = await sha1Hex(data);
+		const progress = (received, total, mirror) => onProgress({ package: pkg.id, received, total, mirror });
+		let { data, mirror } = await download(url, progress, cache);
+		let hash = await sha1Hex(data);
+		if (hash !== pkg.sha1 && cache !== 'no-store' && cache !== 'reload') {
+			console.warn(`[webra] ${pkg.title}: SHA1 ${hash} does not match ${pkg.sha1}, downloading it again past the HTTP cache`);
+			({ data, mirror } = await download(url, progress, 'reload'));
+			hash = await sha1Hex(data);
+		}
+
 		if (hash !== pkg.sha1)
 			throw new Error(`${pkg.title}: SHA1 ${hash} does not match ${pkg.sha1}`);
 
