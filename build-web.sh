@@ -335,10 +335,11 @@ echo "== Staging ${DIST}"
 rm -rf "${DIST}"
 mkdir -p "${DIST}/data"
 cp -a "${PUBLISH}/wwwroot/." "${DIST}/"
-# The page icons (OpenRA.Web/icons: the Lanhouse radar mark; radar.svg is the full drawing apple-touch-icon.png
-# is rendered from, not published). favicon.ico sits at the root of the build because browsers ask for
-# /favicon.ico on their own; the others are named by index.html. Fixed names: tools/publish.py gives them a
-# one-day Cache-Control.
+# The page icons (OpenRA.Web/icons), the Red Alert icon of packaging/artwork: favicon.svg is ra_scalable.svg without
+# the editor's metadata, favicon-32.png and favicon.ico (16, 32, 48) are the PNGs drawn for those sizes, and
+# apple-touch-icon.png is a 180 px render on a dark grey tile. favicon.ico sits at the root of the build because
+# browsers ask for /favicon.ico on their own; the others are named by index.html. Fixed names: tools/publish.py
+# gives them a one-day Cache-Control.
 cp "${SRC_WEB}/icons/favicon.svg" "${SRC_WEB}/icons/favicon-32.png" "${SRC_WEB}/icons/favicon.ico" \
 	"${SRC_WEB}/icons/apple-touch-icon.png" "${DIST}/"
 

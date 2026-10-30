@@ -1,16 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240">
- <circle cx="120" cy="120" r="118" fill="#06272b" />
- <g fill="none" stroke="#1fd6ec">
-  <circle cx="120" cy="120" r="100" stroke-width="14" stroke-opacity=".8" />
-  <circle cx="120" cy="120" r="54" stroke-width="12" stroke-opacity=".55" />
- </g>
- <path d="M120 120L170 33.4A100 100 0 0 1 214 85.8Z" fill="#1fd6ec" fill-opacity=".35" />
- <path d="M120 120L214 85.8" stroke="#c8f8ff" stroke-width="14" stroke-linecap="round" />
- <g fill="#1fd6ec">
-  <circle cx="171" cy="146" r="16" />
- </g>
- <g fill="#de82e6">
-  <circle cx="74" cy="158" r="17" />
-  <circle cx="96" cy="66" r="14" />
- </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+<defs>
+<linearGradient id="r" x1="118.39" y1="128.5" x2="173.78" y2="236.97" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f00"/><stop offset="1" stop-color="#400"/></linearGradient>
+<linearGradient id="y" x1="65.92" y1="69.06" x2="89.05" y2="92.38" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffd300"/><stop offset="1" stop-color="#a07100"/></linearGradient>
+</defs>
+<polygon points="15,102.333 100.333,100.333 130.5,19.333 158,100.333 243,102.667 175.819,154.676 199.667,237.667 129.5,188.333 57.667,237.667 82.667,154" transform="matrix(.5 0 0 .5 -.19 .39)" fill="url(#r)" stroke="#000" stroke-width="8" stroke-miterlimit="10"/>
+<path d="m 37.63,60.88 c -0.16,0.83 8.55,9.88 9.33,9.66 0.43,-0.11 7,-6.16 7,-6.16 l 17.16,18.5 c 0,0 -4.66,2.66 -9.66,2.16 -5,-0.5 -7.95,-2.54 -13.66,-8.83 -1.66,-1.83 -4.16,1.16 -4.16,1.16 l -3,-0.16 c 0,0 -3.66,1.33 -2.5,3.66 0.70,1.41 -17.23,7.36 -10.33,15.33 6.5,7.49 14.66,-8 15.83,-8.83 1.16,-0.83 10.66,18.99 37.16,7 0,0 3.64,3.79 4,3.82 0.51,0.04 9.5,-7.95 9.5,-8.65 0,-0.60 -5,-5.33 -5,-5.33 0,0 11.99,-14.16 -1.57,-34.64 -0.99,-1.50 -6.12,-8.29 -13.03,-12.77 -4.00,-2.59 -9.09,-5.64 -16.89,-8.24 -2.5,-0.83 2.99,3.7 9.03,9.79 3.53,3.56 6.75,7.9 8.96,10.86 7.83,10.5 6.82,20.21 3.83,24.99 0,0 -8.91,-9.57 -17,-18.33 0,0 7.41,-7.33 7,-7.83 -1.30,-1.56 -1.17,-1.67 -2.66,-2.66 0,0 -1.79,0.55 -4.51,0.66 -3.83,0.14 -9.02,-0.11 -9.32,0.17 -1.00,0.98 -15.25,13.41 -15.5,14.66 z" fill="url(#y)" stroke="#000" stroke-width="2.2" stroke-miterlimit="10"/>
 </svg>
