@@ -438,36 +438,30 @@ namespace OpenRA.Server
 			var proxy = socket.RemoteEndPoint;
 			Task.Run(async () =>
 			{
-				EndPoint client = null;
-				string error;
+				// This task owns the socket until the server loop takes it: nothing above it would
+				// close the socket or log the error.
+				var handedOver = false;
 				try
 				{
-					using var timeout = new CancellationTokenSource(ProxyProtocol.HeaderTimeout);
-					await using var stream = new NetworkStream(socket, false);
-					var header = await ProxyProtocol.ReadHeaderAsync(stream, timeout.Token);
-					if (header != null && ProxyProtocol.TryParseHeader(header, out var source))
-						client = source ?? proxy;
-
-					error = "missing or malformed PROXY protocol header";
+					var (client, error) = await ProxyProtocol.ReadClientEndPointAsync(socket, ProxyProtocol.HeaderTimeout);
+					if (client == null)
+						Log.Write("server", $"Closing connection from trusted proxy {proxy}: {error}.");
+					else if (State != ServerState.ShuttingDown)
+					{
+						Log.Write("server", $"Connection from {client} through trusted proxy {proxy}.");
+						events.Add(new ConnectionConnectEvent(socket, client));
+						handedOver = true;
+					}
 				}
-				catch (OperationCanceledException)
+				catch (Exception e)
 				{
-					error = "timed out waiting for the PROXY protocol header";
+					Log.Write("server", $"Closing connection from trusted proxy {proxy}: unexpected error while reading the PROXY protocol header: {e}");
 				}
-				catch (Exception e) when (e is IOException || e is SocketException || e is ObjectDisposedException)
+				finally
 				{
-					error = $"socket error while reading the PROXY protocol header: {e.Message}";
+					if (!handedOver)
+						socket.Dispose();
 				}
-
-				if (client == null)
-				{
-					Log.Write("server", $"Closing connection from trusted proxy {proxy}: {error}.");
-					socket.Dispose();
-					return;
-				}
-
-				Log.Write("server", $"Connection from {client} through trusted proxy {proxy}.");
-				events.Add(new ConnectionConnectEvent(socket, client));
 			});
 		}
 

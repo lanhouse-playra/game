@@ -75,6 +75,34 @@ namespace OpenRA.Server
 			return networks.ToArray();
 		}
 
+		/// <summary>
+		/// Reads and validates the header on a connection accepted from a trusted proxy, leaving any
+		/// byte after it unread. Returns the client's end point (the proxy's own for UNKNOWN), or null
+		/// and the reason when the header is missing, malformed or late, or the socket fails.
+		/// </summary>
+		public static async Task<(EndPoint Client, string Error)> ReadClientEndPointAsync(Socket socket, TimeSpan timeout)
+		{
+			try
+			{
+				var proxy = socket.RemoteEndPoint;
+				using var cancellation = new CancellationTokenSource(timeout);
+				await using var stream = new NetworkStream(socket, false);
+				var header = await ReadHeaderAsync(stream, cancellation.Token);
+				if (header != null && TryParseHeader(header, out var source))
+					return (source ?? proxy, null);
+
+				return (null, "missing or malformed PROXY protocol header");
+			}
+			catch (OperationCanceledException)
+			{
+				return (null, "timed out waiting for the PROXY protocol header");
+			}
+			catch (Exception e) when (e is IOException || e is SocketException || e is ObjectDisposedException)
+			{
+				return (null, $"socket error while reading the PROXY protocol header: {e.Message}");
+			}
+		}
+
 		public static bool IsTrusted(IReadOnlyCollection<IPNetwork> trustedProxies, EndPoint peer)
 		{
 			if (trustedProxies.Count == 0 || peer is not IPEndPoint ipPeer)
