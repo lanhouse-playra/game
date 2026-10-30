@@ -10,8 +10,9 @@
 #   official (default)  Stamps the upstream release version (UPSTREAM_TAG below) into VERSION and
 #                       every mod.yaml. Game servers admit a client by its mod and version string
 #                       alone, so this build refuses to run unless the working tree is clean, HEAD
-#                       is based on UPSTREAM_TAG, the mod data equals the tag and every other changed
-#                       upstream file is listed in OpenRA.Web/upstream-patches.txt. It compiles and
+#                       is based on UPSTREAM_TAG (merges included: every commit since the tag descends
+#                       from it), the mod data equals the tag and every other changed upstream file
+#                       is listed in OpenRA.Web/upstream-patches.txt. It compiles and
 #                       packages a "git archive HEAD" export, never the working tree. The page ignores
 #                       debug URL parameters.
 #   dev (WEBRA_DEV=1)   Builds the working tree as it is and stamps {DEV_VERSION}, which no release
@@ -97,6 +98,12 @@ else
 ${DIRTY}"
 	git -C "${ROOT}" rev-parse -q --verify "refs/tags/${UPSTREAM_TAG}^{commit}" > /dev/null || fail "tag ${UPSTREAM_TAG} not found (git fetch --tags upstream)"
 	git -C "${ROOT}" merge-base --is-ancestor "${UPSTREAM_TAG}" HEAD || fail "HEAD is not based on ${UPSTREAM_TAG}"
+	# A merge can bring in history that does not start at the tag (another release, a branch cut before the tag):
+	# every commit since the tag must descend from it. The checks below compare trees, so they hold for merges.
+	git -C "${ROOT}" rev-list --ancestry-path "${UPSTREAM_TAG}..HEAD" > "${OBJ}/ancestry.list"
+	FOREIGN="$(git -C "${ROOT}" rev-list "${UPSTREAM_TAG}..HEAD" | grep -vxF -f "${OBJ}/ancestry.list" || true)"
+	[ -z "${FOREIGN}" ] || fail "HEAD has $(echo "${FOREIGN}" | wc -l) commits since ${UPSTREAM_TAG} that do not descend from it (merged from another base), for example:
+$(echo "${FOREIGN}" | head -5 | xargs git -C "${ROOT}" log --no-walk --oneline)"
 	git -C "${ROOT}" diff --quiet "${UPSTREAM_TAG}" HEAD -- mods glsl "global mix database.dat" \
 		|| fail "mod data differs from ${UPSTREAM_TAG}; servers would accept a client running other rules:
 $(git -C "${ROOT}" diff --stat "${UPSTREAM_TAG}" HEAD -- mods glsl "global mix database.dat")"
