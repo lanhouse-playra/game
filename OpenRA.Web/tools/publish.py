@@ -24,8 +24,9 @@ usage:
 The manifest is all an uploader needs; it never decides a header itself:
 
   files[]           one entry per object, keyed by its path under the base path the build is
-                    published at (the uploader adds the prefix, e.g. "webra/"; the page finds its files
-                    relative to itself, so any prefix works):
+                    published at (at the root of its own origin, as for Lanhouse, the key is the object
+                    name; under a path the uploader adds the prefix, e.g. "webra/". The page finds its
+                    files relative to itself, so either works):
     key               "index.html", "_framework/dotnet.native.<fingerprint>.wasm", ...
     from, source      where the bytes are: "dist" (relative to the dist directory) or "content" (the
                       directory tools/fetch-content.py wrote; game content is never part of a build)
@@ -41,8 +42,10 @@ The manifest is all an uploader needs; it never decides a header itself:
   site              what the CDN must do, since object storage cannot set these itself:
     headers           response headers for every object under the base path (Content-Security-Policy
                       and the other security headers)
-    rewrites          [{from, to}] paths served from another object ("<base>" -> "<base>index.html")
-    redirects         [{from, to, status}] ("<base without the slash>" -> "<base>")
+    rewrites          [{from, to}] paths served from another object ("<base>" -> "<base>index.html": object
+                      storage has no index documents; at the root, "/" -> "/index.html")
+    redirects         [{from, to, status, when}] ("<base without the slash>" -> "<base>", only when the base
+                      is a path, not the root)
   neverImmutable    the keys that must never be cached as immutable (they keep their names from build to
                     build: the page, its scripts, dotnet.js, build.json, the content manifest)
 
@@ -264,7 +267,7 @@ def make_manifest(dist, encoding):
         "site": {
             "headers": site_headers(build),
             "rewrites": [{"from": "<base>", "to": "<base>index.html"}],
-            "redirects": [{"from": "<base without the trailing slash>", "to": "<base>", "status": 301}],
+            "redirects": [{"from": "<base without the trailing slash>", "to": "<base>", "status": 301, "when": "the base is not /"}],
         },
     }
 
