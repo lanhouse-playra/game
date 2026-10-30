@@ -58,6 +58,10 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 			var hasMaps = modData.MapCache.Any(p => !p.Visibility.HasFlag(MapVisibility.Shellmap));
 			createServerButton.Disabled = !hasMaps;
 
+			// The browser build cannot host: a server listens on a socket.
+			if (!Game.CanHostLocalServer)
+				LocalServerButtons.Disable(createServerButton, "TOOLTIP_CONTAINER", Game.BrowserNoHostingHint);
+
 			widget.Get<ButtonWidget>("BACK_BUTTON").OnClick = () => { Ui.CloseWindow(); onExit(); };
 
 			if (directConnectEndPoint != null)
