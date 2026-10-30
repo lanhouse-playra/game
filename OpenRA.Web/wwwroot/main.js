@@ -451,7 +451,7 @@ function startFrameLoop(host) {
 			if (!(render === 'logic' ? host.LogicFrame() : host.Frame(render))) {
 				stopped = true;
 				clock.stop();
-				setPhase('exited');
+				setPhase('exited', 'The game was closed. Reload the page to play again.');
 			}
 		} catch (e) {
 			stopped = true;
