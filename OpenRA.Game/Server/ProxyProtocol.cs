@@ -57,10 +57,7 @@ namespace OpenRA.Server
 				address = Normalize(address);
 				var maxPrefix = address.AddressFamily == AddressFamily.InterNetwork ? 32 : 128;
 				var prefix = maxPrefix;
-				if (slash >= 0 && !OpenRA.Exts.TryParseInt32Invariant(entry.AsSpan(slash + 1), out prefix))
-					throw new ArgumentException($"Trusted proxy `{entry}` has an invalid prefix length.");
-
-				if (prefix < 0 || prefix > maxPrefix)
+				if (slash >= 0 && !TryParseDecimal(entry.AsSpan(slash + 1), maxPrefix, out prefix))
 					throw new ArgumentException($"Trusted proxy `{entry}` has an invalid prefix length.");
 
 				// Refuse "10.0.0.1/8": it is ambiguous whether a single host or the network was meant.
@@ -160,10 +157,8 @@ namespace OpenRA.Server
 			if (line.SequenceEqual("UNKNOWN"u8) || line.StartsWith("UNKNOWN "u8))
 				return true;
 
-			foreach (var b in line)
-				if (b < 0x20 || b > 0x7E)
-					return false;
-
+			// Every field below is checked character by character against its own small alphabet, so a
+			// control or non-ASCII byte (which Encoding.ASCII turns into '?') is refused wherever it is.
 			var fields = Encoding.ASCII.GetString(line).Split(' ');
 			if (fields.Length != 5)
 				return false;
@@ -177,11 +172,27 @@ namespace OpenRA.Server
 				return false;
 
 			if (!TryParseAddress(fields[1], family, out var sourceAddress) || !TryParseAddress(fields[2], family, out _) ||
-					!TryParsePort(fields[3], out var sourcePort) || !TryParsePort(fields[4], out _))
+					!TryParseDecimal(fields[3], IPEndPoint.MaxPort, out var sourcePort) || !TryParseDecimal(fields[4], IPEndPoint.MaxPort, out _))
 				return false;
 
-			source = new IPEndPoint(Normalize(sourceAddress), sourcePort);
+			// A connection cannot come from these, and a ban on one would mean nothing.
+			sourceAddress = Normalize(sourceAddress);
+			if (!IsUnicastSource(sourceAddress))
+				return false;
+
+			source = new IPEndPoint(sourceAddress, sourcePort);
 			return true;
+		}
+
+		static bool IsUnicastSource(IPAddress address)
+		{
+			if (address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any) || address.Equals(IPAddress.Broadcast))
+				return false;
+
+			if (address.AddressFamily == AddressFamily.InterNetwork)
+				return (address.GetAddressBytes()[0] & 0xF0) != 0xE0;
+
+			return !address.IsIPv6Multicast;
 		}
 
 		/// <summary>Only the plain textual forms: dotted quad for IPv4, hex and colons (optionally an embedded dotted quad) for IPv6.</summary>
@@ -208,9 +219,10 @@ namespace OpenRA.Server
 			return true;
 		}
 
-		static bool TryParsePort(string text, out int port)
+		/// <summary>A port or prefix length: ASCII digits only, no sign, space or leading zero.</summary>
+		static bool TryParseDecimal(ReadOnlySpan<char> text, int max, out int value)
 		{
-			port = 0;
+			value = 0;
 			if (text.Length == 0 || text.Length > 5 || (text.Length > 1 && text[0] == '0'))
 				return false;
 
@@ -219,10 +231,10 @@ namespace OpenRA.Server
 				if (!char.IsAsciiDigit(c))
 					return false;
 
-				port = port * 10 + (c - '0');
+				value = value * 10 + (c - '0');
 			}
 
-			return port <= IPEndPoint.MaxPort;
+			return value <= max;
 		}
 
 		static IPAddress Normalize(IPAddress address)
