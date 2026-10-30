@@ -335,6 +335,12 @@ echo "== Staging ${DIST}"
 rm -rf "${DIST}"
 mkdir -p "${DIST}/data"
 cp -a "${PUBLISH}/wwwroot/." "${DIST}/"
+# The page icons (OpenRA.Web/icons: the Lanhouse radar mark; radar.svg is the full drawing apple-touch-icon.png
+# is rendered from, not published). favicon.ico sits at the root of the build because browsers ask for
+# /favicon.ico on their own; the others are named by index.html. Fixed names: tools/publish.py gives them a
+# one-day Cache-Control.
+cp "${SRC_WEB}/icons/favicon.svg" "${SRC_WEB}/icons/favicon-32.png" "${SRC_WEB}/icons/favicon.ico" \
+	"${SRC_WEB}/icons/apple-touch-icon.png" "${DIST}/"
 
 ENGINE_STAGE="${OBJ}/stage/engine"
 rm -rf "${ENGINE_STAGE}"
@@ -453,7 +459,7 @@ python3 -I "${SRC_WEB}/tools/precompress.py" "${DIST}/data"
 
 # Brotli copies of everything compressible, each checked against its file (tools/brotli.mjs): a host
 # without content negotiation (R2) serves exactly one encoding per object, the .br copy.
-find "${DIST}" -type f \( -name '*.html' -o -name '*.js' -o -name '*.json' -o -name '*.wasm' -o -name '*.dat' -o -name '*.bin' \) \
+find "${DIST}" -type f \( -name '*.html' -o -name '*.js' -o -name '*.json' -o -name '*.wasm' -o -name '*.dat' -o -name '*.bin' -o -name '*.svg' \) \
 	! -name 'content.*' -print0 | sort -z | xargs -0 "${EMSDK_NODE}" "${SRC_WEB}/tools/brotli.mjs" > "${OBJ}/brotli.log"
 echo "brotli: $(grep -c '"kept"' "${OBJ}/brotli.log") checked, $(grep -vc '"kept"' "${OBJ}/brotli.log") written"
 
