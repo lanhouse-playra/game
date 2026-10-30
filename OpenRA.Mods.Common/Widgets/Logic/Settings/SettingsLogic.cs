@@ -133,7 +133,7 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 					ConfirmationDialogs.ButtonPrompt(modData,
 						title: RestartTitle,
 						text: RestartPrompt,
-						onConfirm: () => Game.SwitchToExternalMod(external, null, NoRestart),
+						onConfirm: () => Restart(external, NoRestart),
 						confirmText: RestartAccept,
 						onCancel: CloseAndExit,
 						cancelText: RestartCancel);
@@ -163,6 +163,23 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 					onCancel: () => { },
 					cancelText: ResetCancel);
 			};
+		}
+
+		static void Restart(ExternalMod external, Action onFailed)
+		{
+			// The browser build cannot start a process: its restart is a page reload, which the page runs once
+			// the settings saved above are in the browser's storage.
+			if (OperatingSystem.IsBrowser())
+			{
+				if (Game.BrowserRestart != null)
+					Game.BrowserRestart();
+				else
+					onFailed();
+
+				return;
+			}
+
+			Game.SwitchToExternalMod(external, null, onFailed);
 		}
 
 		public void RegisterSettingsPanel(string panelID, string label, Func<Widget, Func<bool>> init, Func<Widget, Action> reset)

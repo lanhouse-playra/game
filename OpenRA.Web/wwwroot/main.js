@@ -133,6 +133,22 @@ async function resetSaved() {
 	location.reload();
 }
 
+// "Restart Now" in the game's settings: the browser's restart is a page reload. The engine has just written
+// settings.yaml into /support, and the reload restores /support from IndexedDB, so it is saved there first.
+// If that fails, the storage notice is up and the page stays as it is: a reload would lose the change.
+async function restart() {
+	try {
+		if (!WebRA.support || await WebRA.support.flush()) {
+			location.reload();
+			return;
+		}
+	} catch (e) {
+		WebRA.errors.push(`restart: ${e}`);
+	}
+
+	console.warn('[webra] restart: the settings could not be saved, so the page was not reloaded');
+}
+
 // Lets the page repaint (status text) before a long synchronous call. A hidden page gets no animation
 // frames at all, so it does not wait for one: a tab opened or restored in the background (session
 // restore after a browser crash) used to stop at "Starting the game" until the player looked at it,
@@ -876,8 +892,9 @@ async function main() {
 	let transport = null;
 	const net = createNetModule(() => transport);
 	setModuleImports('webra-net', net);
-	// The engine shows errors it recovered from (a UI action that failed) as a notice.
-	setModuleImports('webra-page', { notify: text => notify(text, true) });
+	// The engine shows errors it recovered from (a UI action that failed) as a notice, and asks for a
+	// restart ("Restart Now" in its settings) through restart().
+	setModuleImports('webra-page', { notify: text => notify(text, true), restart: () => restart() });
 	page.guardLeaving(() => net.openCount() > 0);
 
 	setPhase('staging', 'Installing');

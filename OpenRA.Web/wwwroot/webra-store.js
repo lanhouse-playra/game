@@ -128,7 +128,7 @@ export class SupportSync {
 		this.syncing = null;
 		this.stopped = false;
 		this.timer = 0;
-		this.stats = { restoredFiles: 0, restoredBytes: 0, skipped: [], syncs: 0, written: 0, deleted: 0, failedFiles: 0, lastError: null };
+		this.stats = { restoredFiles: 0, restoredBytes: 0, skipped: [], syncs: 0, failedSyncs: 0, written: 0, deleted: 0, failedFiles: 0, lastError: null };
 	}
 
 	async restore() {
@@ -217,6 +217,7 @@ export class SupportSync {
 		}
 
 		this.syncing = this.syncOnce().catch(e => {
+			this.stats.failedSyncs++;
 			this.stats.lastError = String(e);
 			console.warn('[webra] saving the support directory failed:', e);
 			this.onError(isQuotaError(e) ? 'quota' : 'write', e);
@@ -309,6 +310,20 @@ export class SupportSync {
 		for (const entry of batch)
 			error = (await this.writeBatch([entry])) || error;
 		return error;
+	}
+
+	// Saves everything written until now: waits for a sync in progress (and the one it may have queued),
+	// then runs one more. Resolves to true if that last sync saved every change it found.
+	async flush() {
+		while (this.syncing)
+			await this.syncing;
+
+		const failed = this.stats.failedSyncs;
+		await this.sync();
+		while (this.syncing)
+			await this.syncing;
+
+		return this.stats.failedSyncs === failed;
 	}
 
 	// Stops saving (Reset saved data must not be undone by a sync that is still due).

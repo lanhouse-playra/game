@@ -45,6 +45,10 @@ namespace OpenRA.Web
 		[JSImport("notify", "webra-page")]
 		private static partial void JsNotify(string text);
 
+		/// <summary>Saves the support directory in the browser's storage, then reloads the page (page module "webra-page").</summary>
+		[JSImport("restart", "webra-page")]
+		private static partial void JsRestart();
+
 		/// <summary>Initializes the engine and loads the mod and its shellmap. Blocks until done.</summary>
 		[JSExport]
 		public static void Boot(string[] args)
@@ -56,6 +60,7 @@ namespace OpenRA.Web
 			{
 				Network.NetworkConnection.StreamTransportFactory = WebSocketTransport.Open;
 				Game.BrowserNotify = JsNotify;
+				Game.BrowserRestart = JsRestart;
 				Game.BrowserInitialize(args);
 			}
 			catch (Exception e)

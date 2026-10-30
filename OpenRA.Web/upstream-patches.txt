@@ -35,6 +35,7 @@ OpenRA.Mods.Common/Widgets/Logic/Settings/AdvancedSettingsLogic.cs
 OpenRA.Mods.Common/Widgets/Logic/Settings/DisplaySettingsLogic.cs
 OpenRA.Mods.Common/Widgets/Logic/Settings/GamePlaySettingsLogic.cs
 OpenRA.Mods.Common/Widgets/Logic/Settings/InputSettingsLogic.cs
+OpenRA.Mods.Common/Widgets/Logic/Settings/SettingsLogic.cs
 OpenRA.Platforms.Default/OpenAlSoundEngine.cs
 OpenRA.Platforms.Default/OpenGL.cs
 OpenRA.Platforms.Default/Sdl2GraphicsContext.cs
