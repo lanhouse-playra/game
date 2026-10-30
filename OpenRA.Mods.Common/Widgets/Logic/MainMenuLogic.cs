@@ -154,7 +154,12 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 				});
 			};
 
-			extrasMenu.Get<ButtonWidget>("MAP_EDITOR_BUTTON").OnClick = () => SwitchMenu(MenuType.MapEditor);
+			var mapEditorButton = extrasMenu.Get<ButtonWidget>("MAP_EDITOR_BUTTON");
+			mapEditorButton.OnClick = () => SwitchMenu(MenuType.MapEditor);
+
+			// The browser build: maps saved in the editor do not persist properly there; the desktop game has it.
+			if (OperatingSystem.IsBrowser())
+				BrowserUnavailable.Disable(mapEditorButton, LocalServerButtons.AddTooltipContainer(rootMenu, "BROWSER_TOOLTIP_CONTAINER"));
 
 			var assetBrowserButton = extrasMenu.GetOrNull<ButtonWidget>("ASSETBROWSER_BUTTON");
 			if (assetBrowserButton != null)
