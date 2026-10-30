@@ -192,16 +192,35 @@ namespace OpenRA.Web
 		[JSExport]
 		public static string StackTrace() => Environment.StackTrace;
 
-		/// <summary>Test hook: the screen rectangle "x,y,w,h" of a visible widget, or "" if there is none.</summary>
+		/// <summary>Test hook: the screen rectangle "x,y,w,h" of a widget shown with all its parents, or "" if there is none.</summary>
 		[JSExport]
 		public static string WidgetBounds(string id)
 		{
-			var widget = Widgets.Ui.Root.GetOrNull(id);
-			if (widget == null || !widget.IsVisible())
+			var widget = FindShownWidget(Widgets.Ui.Root, id);
+			if (widget == null)
 				return "";
 
 			var r = widget.RenderBounds;
 			return string.Create(CultureInfo.InvariantCulture, $"{r.X},{r.Y},{r.Width},{r.Height}");
+		}
+
+		// Ids repeat (every panel has a BACK_BUTTON): the first widget with this id that is shown, with all its parents.
+		static Widgets.Widget FindShownWidget(Widgets.Widget widget, string id)
+		{
+			if (!widget.IsVisible())
+				return null;
+
+			if (widget.Id == id)
+				return widget;
+
+			foreach (var child in widget.Children)
+			{
+				var found = FindShownWidget(child, id);
+				if (found != null)
+					return found;
+			}
+
+			return null;
 		}
 
 		/// <summary>
