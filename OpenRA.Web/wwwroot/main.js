@@ -61,6 +61,7 @@ const WebRA = window.WebRA = {
 	load: {},
 	errors: [],
 	notices: [],
+	downloads: [],
 	host: null,
 	diagnostics: (reset = false) => WebRA.host ? JSON.parse(WebRA.host.Diagnostics(reset)) : null,
 };
@@ -806,6 +807,10 @@ function watchFullscreenButton() {
 	update();
 }
 
+// Files the game writes for the player that also go to the browser's Downloads, as soon as each is complete:
+// screenshots and replays. Maps the game downloads to play on a server stay inside the browser.
+const SAVED_FOR_PLAYER = ['/support/Screenshots/', '/support/Replays/'];
+
 async function main() {
 	setPhase('loading', 'Starting');
 	ui.retry.addEventListener('click', () => location.reload());
@@ -913,6 +918,8 @@ async function main() {
 		notify(NOTICES.skipped);
 	WebRA.stagedFiles = staged;
 	WebRA.load.restoredSupportFiles = support.stats.restoredFiles;
+	// After the restore: the files restored from IndexedDB are not new.
+	page.downloadSavedFiles(FS, SAVED_FOR_PLAYER, WebRA.downloads);
 
 	const exports = await getAssemblyExports('OpenRA.Web');
 	const host = exports.OpenRA && exports.OpenRA.Web && exports.OpenRA.Web.WebHost;
