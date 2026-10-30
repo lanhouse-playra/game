@@ -425,6 +425,9 @@ function createWorkerClock(onTick) {
 	};
 }
 
+// Returns sleep(ms), a timeout for other page work (the maps loader) that also ends at the first clock
+// tick after its time: browsers throttle main-thread timers in hidden tabs (one wake-up per second, one
+// per minute after five minutes in Chrome), the clock's worker timer is not.
 function startFrameLoop(host) {
 	let stopped = false;
 	let rafPending = false;
@@ -471,6 +474,34 @@ function startFrameLoop(host) {
 			runFrame('logic');
 			lastLogicFrameEnd = performance.now();
 		}
+
+		wakeSleepers();
+	});
+
+	const sleepers = new Set();
+	const wakeSleepers = () => {
+		if (sleepers.size === 0)
+			return;
+
+		const t = performance.now();
+		for (const sleeper of sleepers)
+			if (t >= sleeper.at)
+				sleeper.wake();
+	};
+
+	const sleep = ms => new Promise(resolve => {
+		const sleeper = {
+			at: performance.now() + ms,
+			wake: () => {
+				sleepers.delete(sleeper);
+				clearTimeout(sleeper.timer);
+				resolve();
+			},
+		};
+
+		// Also ends the wait when the clock has stopped (the game exited).
+		sleeper.timer = setTimeout(sleeper.wake, ms);
+		sleepers.add(sleeper);
 	});
 
 	const requestFrame = () => {
@@ -500,6 +531,8 @@ function startFrameLoop(host) {
 		clock.start(VISIBLE_LOGIC_INTERVAL_MS);
 		requestFrame();
 	}
+
+	return { sleep };
 }
 
 // Game connections: the engine opens a WebSocket to the WebSocket-to-TCP relay through these
@@ -550,11 +583,11 @@ function createNetModule(getTransport) {
 // lobby and the replay browser pick the map up by themselves once it is loaded. A status line shows
 // the progress outside matches.
 // The maps are added to the engine's map cache a few at a time between frames, never during a match
-// or a replay.
+// or a replay; in a hidden tab the frame clock paces them (the player may wait in another tab).
 const MAP_LOAD_BUDGET_MS = 8;
 const MAP_DOWNLOAD_ATTEMPTS = 3;
 
-async function loadDeferredMaps(prefix, FS, host) {
+async function loadDeferredMaps(prefix, FS, host, sleep) {
 	const state = WebRA.maps = { state: 'downloading', received: 0, total: 0, maps: 0, loaded: 0, startedMs: now() };
 	const inMatch = () => {
 		try {
@@ -590,7 +623,7 @@ async function loadDeferredMaps(prefix, FS, host) {
 				WebRA.errors.push(`maps (attempt ${attempt}): ${e && e.message || e}`);
 				if (attempt >= MAP_DOWNLOAD_ATTEMPTS)
 					throw e;
-				await new Promise(resolve => setTimeout(resolve, 5000 * attempt));
+				await sleep(5000 * attempt);
 			}
 		}
 
@@ -618,14 +651,14 @@ async function loadDeferredMaps(prefix, FS, host) {
 				return;
 
 			if (inMatch()) {
-				await new Promise(resolve => setTimeout(resolve, 1000));
+				await sleep(1000);
 				continue;
 			}
 
 			pending = host.LoadPendingMaps(MAP_LOAD_BUDGET_MS);
 			state.loaded = state.maps - pending;
 			show();
-			await new Promise(resolve => setTimeout(resolve, 16));
+			await sleep(16);
 		}
 
 		state.state = 'ready';
@@ -794,9 +827,9 @@ async function main() {
 	setPhase('running');
 	canvas.focus();
 	watchFullscreenButton();
-	startFrameLoop(host);
+	const { sleep } = startFrameLoop(host);
 	if (build.mapData && !mapsBundle)
-		loadDeferredMaps(build.mapData, FS, host);
+		loadDeferredMaps(build.mapData, FS, host, sleep);
 }
 
 // Content-Security-Policy violations (deploy/webra.caddy) are recorded for tests and bug reports.
