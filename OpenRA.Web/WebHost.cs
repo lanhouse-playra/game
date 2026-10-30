@@ -35,6 +35,8 @@ namespace OpenRA.Web
 		static readonly Queue<(IReadOnlyPackage Folder, MapClassification Classification, string Map)> PendingMaps = new();
 		static MiniYamlNode[][] pendingMapsRules;
 		static int deferredMapsLoaded;
+		static double deferredMapsMilliseconds;
+		static double deferredMapsSliceMillisecondsWorst;
 
 		// The runtime starts without running Main: the page drives the engine through the exports below.
 		public static void Main() { }
@@ -134,7 +136,9 @@ namespace OpenRA.Web
 
 		/// <summary>
 		/// Loads queued maps into the map cache (they then show in the map chooser, the lobby and the
-		/// replay browser) until <paramref name="budgetMilliseconds"/> have passed, at least one.
+		/// replay browser) within <paramref name="budgetMilliseconds"/>, at least one. A map is not
+		/// started when the average map so far would overrun the budget, so a call takes about the
+		/// budget or one map, whichever is longer (a single map is not split: 2-70 ms).
 		/// The page calls this between frames. Returns the number of maps still queued.
 		/// </summary>
 		[JSExport]
@@ -149,14 +153,21 @@ namespace OpenRA.Web
 
 			// As in MapCache.LoadMaps: parse the mod's rules once, not once per map.
 			pendingMapsRules ??= modData.GetRulesYaml();
+			var loaded = 0;
 			while (PendingMaps.Count > 0)
 			{
+				if (loaded > 0 && Stopwatch.GetElapsedTime(start).TotalMilliseconds + deferredMapsMilliseconds / deferredMapsLoaded > budgetMilliseconds)
+					break;
+
+				var mapStart = Stopwatch.GetTimestamp();
 				var (folder, classification, map) = PendingMaps.Dequeue();
 				modData.MapCache.LoadDeferredMap(map, folder, classification, gridType, pendingMapsRules);
+				deferredMapsMilliseconds += Stopwatch.GetElapsedTime(mapStart).TotalMilliseconds;
 				deferredMapsLoaded++;
-				if (Stopwatch.GetElapsedTime(start).TotalMilliseconds >= budgetMilliseconds)
-					break;
+				loaded++;
 			}
+
+			deferredMapsSliceMillisecondsWorst = Math.Max(deferredMapsSliceMillisecondsWorst, Stopwatch.GetElapsedTime(start).TotalMilliseconds);
 
 			if (PendingMaps.Count == 0)
 				pendingMapsRules = null;
@@ -218,6 +229,8 @@ namespace OpenRA.Web
 			sb.Append(CultureInfo.InvariantCulture, $"\"logicBudgetResets\":{Game.BrowserLogicBudgetResets},");
 			sb.Append(CultureInfo.InvariantCulture, $"\"deferredMapsLoaded\":{deferredMapsLoaded},");
 			sb.Append(CultureInfo.InvariantCulture, $"\"deferredMapsPending\":{PendingMaps.Count},");
+			sb.Append(CultureInfo.InvariantCulture, $"\"deferredMapsMs\":{deferredMapsMilliseconds:F1},");
+			sb.Append(CultureInfo.InvariantCulture, $"\"deferredMapsSliceMsWorst\":{deferredMapsSliceMillisecondsWorst:F1},");
 			sb.Append(CultureInfo.InvariantCulture, $"\"mapsAvailable\":{Game.ModData?.MapCache.Count(m => m.Status == MapStatus.Available) ?? 0}");
 			sb.Append('}');
 
