@@ -43,6 +43,7 @@
 #   WEBRA_STORAGE_NAME  IndexedDB database name; default "webra" at the root of a site, "webra:<path>" under a path
 #   WEBRA_META_CSP      1 writes the Content-Security-Policy into index.html as <meta http-equiv> too, for hosts
 #                       that cannot be relied on to send the header (object storage behind a CDN)
+#   WEBRA_PAGE_TITLE    the page's <title>, e.g. the site's name for a hosting target; default "OpenRA"
 #   WEBRA_PUBLISH_ENCODING  br (default) or identity: the encoding of the publish manifest's objects
 #                       (OpenRA.Web/publish.json, tools/publish.py), for hosts without content negotiation
 #   WEBRA_TARGET        a hosting target: reads OpenRA.Web/hosting/<target>.env (these variables, for one
@@ -432,6 +433,23 @@ FRAMEWORK_BYTES="$(cat "${DIST}"/_framework/*.br | wc -c)"
 cat > "${DIST}/data/build.json" << EOF
 {"version":"${VERSION}","commit":"${COMMIT}","dev":${DEV_BOOL},"configuration":"${CONFIGURATION}","aot":${RUN_AOT},"runtime":"${DOTNET_RUNTIME_VERSION}","mods":"${WEBRA_MODS}","target":"${WEBRA_TARGET:-}","content":$([ -n "${WEBRA_CONTENT_DIR:-}" ] && echo true || echo false),"proxy":"${WEBRA_PROXY_URL}","contentRelay":"${WEBRA_CONTENT_RELAY}","contentUrl":"${WEBRA_CONTENT_URL}","masterRelay":"${WEBRA_MASTER_RELAY}","storage":"${WEBRA_STORAGE_NAME}","engineData":"data/engine.${ENGINE_HASH}","mapData":"${MAP_DATA}","contentManifest":"data/content-packages.json","frameworkBytes":${FRAMEWORK_BYTES}}
 EOF
+
+# The page title (WEBRA_PAGE_TITLE). Only the browser tab's title: the game's own name and window title stay.
+if [ -n "${WEBRA_PAGE_TITLE:-}" ]; then
+	python3 -I - "${DIST}/index.html" "${WEBRA_PAGE_TITLE}" << 'PY'
+import html, sys
+path, title = sys.argv[1], sys.argv[2]
+page = open(path, encoding="utf-8").read()
+anchor = "<title>OpenRA</title>"
+assert page.count(anchor) == 1, "index.html: no single <title>OpenRA</title>"
+page = page.replace(anchor, "<title>" + html.escape(title) + "</title>")
+open(path, "w", encoding="utf-8").write(page)
+PY
+	# The SDK's compressed copies of index.html are stale now.
+	rm -f "${DIST}/index.html.br" "${DIST}/index.html.gz"
+	python3 -I -c 'import gzip, sys; d = open(sys.argv[1], "rb").read(); open(sys.argv[1] + ".gz", "wb").write(gzip.compress(d, 9, mtime=0))' "${DIST}/index.html"
+	echo "index.html: title ${WEBRA_PAGE_TITLE}"
+fi
 
 # The Content-Security-Policy also as <meta http-equiv> in the page (WEBRA_META_CSP=1): object storage
 # cannot send headers, and a CDN rule that is missing or wrong would otherwise leave the page without a
