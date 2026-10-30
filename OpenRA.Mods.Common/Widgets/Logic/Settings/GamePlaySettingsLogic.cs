@@ -57,6 +57,10 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 
 		[FluentReference]
 		const string AutoSaveMaxFileNumber = "auto-save-max-file-number";
+
+		// Browser build only. Not a fluent message: the mod's fluent files must equal the release's.
+		const string BrowserAutoSaveHint = "Auto-save only runs in offline games.";
+
 		readonly int[] autoSaveSeconds = [0, 10, 30, 45, 60, 120, 180, 300, 600];
 
 		readonly int[] autoSaveFileNumbers = [3, 5, 10, 20, 50, 100];
@@ -207,6 +211,13 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 			autoSaveNoDropDown.OnMouseDown = _ => ShowAutoSaveFileNumberDropdown(autoSaveNoDropDown, autoSaveFileNumbers);
 			autoSaveNoDropDown.GetText = () => FluentProvider.GetMessage(AutoSaveMaxFileNumber, "saves", autoSaveSettings.AutoSaveMaxFileCount);
 			autoSaveNoDropDown.IsDisabled = () => autoSaveSettings.AutoSaveInterval <= 0;
+
+			// The browser build plays on dedicated servers only, where games are never auto-saved (AutoSave).
+			if (OperatingSystem.IsBrowser())
+			{
+				BrowserUnavailable.Disable(autoSaveIntervalDropDown, "SETTINGS_TOOLTIP_CONTAINER", BrowserAutoSaveHint);
+				BrowserUnavailable.Disable(autoSaveNoDropDown, "SETTINGS_TOOLTIP_CONTAINER", BrowserAutoSaveHint);
+			}
 
 			SettingsUtils.AdjustSettingsScrollPanelLayout(scrollPanel);
 

@@ -324,6 +324,11 @@ function bootArguments(size, proxy) {
 		'Graphics.VSync=False',
 		// Discord rich presence talks to a local IPC pipe, which a browser cannot do.
 		'Game.EnableDiscordService=False',
+		// UPnP/NAT-PMP discovery needs sockets: with "true" saved by an older build (the checkbox is disabled
+		// now), the engine stopped at every boot with "System.Net.Sockets is not supported on this platform".
+		'Server.DiscoverNatDevices=False',
+		// emscripten's SDL cannot confine the mouse to the window; the setting is disabled in the browser.
+		'Game.LockMouseWindow=False',
 		// Registers this mod/version as an installed external mod, as the desktop launchers do.
 		// The server browser only lets you join servers whose mod and version are registered.
 		'Engine.LaunchPath=/openra/openra-web',

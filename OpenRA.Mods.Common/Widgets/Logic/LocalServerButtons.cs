@@ -42,12 +42,7 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 			if (Environment.GetEnvironmentVariable("WEBRA_TEST_LOCAL_SERVER_ENTRIES") == "1")
 				return;
 
-			button.IsDisabled = () => true;
-
-			// TooltipContainer is a chrome field: set it the way the widget loader does.
-			FieldLoader.LoadFieldOrProperty(button, nameof(ButtonWidget.TooltipContainer), tooltipContainer);
-			button.GetTooltipText = () => Game.BrowserNoLocalServer;
-			button.GetTooltipDesc = () => hint;
+			BrowserUnavailable.Disable(button, tooltipContainer, hint);
 		}
 	}
 }

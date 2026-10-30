@@ -124,6 +124,11 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 				MakeMouseFocusSettingsLive(gameSettings);
 			};
 
+			// The browser build cannot confine the mouse to its window (emscripten's SDL has no window grab);
+			// fullscreen keeps it in the page. The page passes it off at boot.
+			if (OperatingSystem.IsBrowser())
+				BrowserUnavailable.Disable(lockMouseCheckbox, "SETTINGS_TOOLTIP_CONTAINER");
+
 			var zoomModifierDropdown = panel.Get<DropDownButtonWidget>("ZOOM_MODIFIER");
 			zoomModifierDropdown.OnMouseDown = _ => ShowZoomModifierDropdown(zoomModifierDropdown, gameSettings);
 
