@@ -188,14 +188,14 @@ function relayUrl(build) {
 }
 
 // Reads a packed bundle (<prefix>.json index + <prefix>.bin blob), reporting download progress
-// to onProgress(received, total).
-async function fetchBundle(prefix, onProgress) {
-	const index = await fetch(`${prefix}.json`);
+// to onProgress(received, total). signal (optional) cancels the download.
+async function fetchBundle(prefix, onProgress, signal) {
+	const index = await fetch(`${prefix}.json`, { signal });
 	if (!index.ok)
 		return null;
 
 	const { files, size } = await index.json();
-	const response = await fetch(`${prefix}.bin`);
+	const response = await fetch(`${prefix}.bin`, { signal });
 	if (!response.ok)
 		throw new Error(`Failed to download ${prefix}.bin: ${response.status}`);
 
@@ -609,30 +609,70 @@ async function loadDeferredMaps(prefix, FS, host, sleep) {
 	const statusTimer = setInterval(show, 1000);
 	show();
 	try {
-		let bundle = null;
-		for (let attempt = 1; !bundle; attempt++) {
+		// Neither downloaded nor staged during a match: the transfer would compete with the game's
+		// connection, and staging blocks the page for tens of milliseconds. A download still running
+		// when a match starts is cancelled and a finished one dropped; both start again once the match
+		// is over (the second time from the HTTP cache). The 10.8 MB bundle is released once staged:
+		// the file system holds its own copy.
+		let files = null;
+		for (let attempt = 1; !files;) {
+			while (inMatch()) {
+				if (WebRA.phase !== 'running')
+					return;
+				await sleep(1000);
+			}
+
+			const download = new AbortController();
+			let downloading = true;
+			(async () => {
+				while (downloading) {
+					await sleep(1000);
+					if (downloading && inMatch())
+						download.abort(new Error('a match started'));
+				}
+			})();
+
+			let bundle = null;
 			try {
 				bundle = await fetchBundle(prefix, (received, total) => {
 					state.received = received;
 					state.total = total;
 					show();
-				});
+				}, download.signal);
 				if (!bundle)
 					throw new Error(`${prefix}.json is missing`);
 			} catch (e) {
+				state.received = 0;
+				if (download.signal.aborted) {
+					state.cancelledInMatch = (state.cancelledInMatch || 0) + 1;
+					continue;
+				}
+
 				WebRA.errors.push(`maps (attempt ${attempt}): ${e && e.message || e}`);
 				if (attempt >= MAP_DOWNLOAD_ATTEMPTS)
 					throw e;
 				await sleep(5000 * attempt);
+				attempt++;
+				continue;
+			} finally {
+				downloading = false;
 			}
-		}
 
-		state.downloadedMs = now();
-		stageBundle(FS, bundle);
+			// This check and the staging run in one task, so a match cannot start in between.
+			if (inMatch()) {
+				state.droppedInMatch = (state.droppedInMatch || 0) + 1;
+				continue;
+			}
+
+			state.downloadedMs = now();
+			stageBundle(FS, bundle);
+			files = bundle.files;
+			bundle = null;
+		}
 
 		// Every top-level entry of a mod's map folder is a map (an .oramap file or a directory).
 		const folders = new Map();
-		for (const file of bundle.files) {
+		for (const file of files) {
 			const m = /^(\/openra\/mods\/[^/]+\/maps)\/([^/]+)/.exec(file.path);
 			if (!m)
 				continue;
