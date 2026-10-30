@@ -825,6 +825,7 @@ async function main() {
 	// Browser integration that must be in place before the runtime starts (the audio context is
 	// created during boot, the version check and news requests soon after).
 	page.unlockAudio();
+	page.keepPageTitle();
 	page.routeMasterRequests(build.masterRelay ? resolveUrl(build.masterRelay) : '');
 	page.suppressBrowserUi(canvas);
 	page.captureKeys({ isActive: () => WebRA.phase === 'running', keepDevTools: devBuild });
