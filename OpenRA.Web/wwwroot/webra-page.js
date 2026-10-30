@@ -6,8 +6,9 @@
 // information, see COPYING.
 
 // Browser integration of the game page: canvas size, fullscreen, keys the browser would otherwise
-// take, audio unlock, the mouse at the window edges, and the master server requests that need our
-// relay. None of it changes what the engine computes; it only changes what the browser does around it.
+// take, audio unlock, the mouse at the window edges, the master server requests that need our relay,
+// and the browser's Downloads for the files the game saves for the player. None of it changes what the
+// engine computes; it only changes what the browser does around it.
 
 // The engine needs at least this effective resolution for its menus (WorldViewportSizes).
 const MIN_WIDTH = 1024;
@@ -229,4 +230,73 @@ export function guardLeaving(isConnected) {
 			e.returnValue = '';
 		}
 	});
+}
+
+// Files the game saves for the player also go to the browser's Downloads: each file written under one of
+// the given directories is offered as a download when the game closes it, i.e. once it is complete (a
+// replay is written during the whole match and closed when the match ends). It works at the file layer,
+// for whatever writes there, by wrapping emscripten's FS.write and FS.close, which every write of the
+// .NET runtime goes through. Install it after the saved files are restored into the file system, or
+// they would all be downloaded again. No user gesture is needed (the replay closes without a click);
+// Chrome asks once whether the site may download several files.
+export function downloadSavedFiles(FS, dirs, log = []) {
+	const written = new WeakSet();
+	const write = FS.write;
+	FS.write = function (stream, ...rest) {
+		const n = write.call(this, stream, ...rest);
+		if (n > 0)
+			written.add(stream);
+		return n;
+	};
+
+	const close = FS.close;
+	FS.close = function (stream) {
+		const result = close.call(this, stream);
+		if (written.has(stream)) {
+			written.delete(stream);
+			let path = stream.path;
+			try {
+				path = FS.getPath(stream.node);
+			} catch {
+				// Keep the path it was opened with.
+			}
+
+			if (dirs.some(dir => path.startsWith(dir)))
+				offerDownload(FS, path, log);
+		}
+
+		return result;
+	};
+
+	return log;
+}
+
+const DOWNLOAD_TYPES = { '.png': 'image/png', '.orarep': 'application/octet-stream' };
+
+function offerDownload(FS, path, log) {
+	const name = path.substring(path.lastIndexOf('/') + 1);
+	let data;
+	try {
+		data = FS.readFile(path);
+	} catch (e) {
+		log.push({ path, error: String(e && (e.code || e.message) || e) });
+		return;
+	}
+
+	const ext = name.includes('.') ? name.substring(name.lastIndexOf('.')).toLowerCase() : '';
+	const url = URL.createObjectURL(new Blob([data], { type: DOWNLOAD_TYPES[ext] || 'application/octet-stream' }));
+	log.push({ path, name, bytes: data.length, at: Math.round(performance.now()) });
+
+	// Out of the file system call: the engine is in the middle of a frame.
+	setTimeout(() => {
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = name;
+		a.hidden = true;
+		document.body.appendChild(a);
+		a.click();
+		a.remove();
+		// Some browsers read the blob after the click returns.
+		setTimeout(() => URL.revokeObjectURL(url), 60000);
+	}, 0);
 }
