@@ -96,6 +96,12 @@ namespace OpenRA
 		/// <summary>Set by the browser host: shows a message to the player over the game.</summary>
 		public static Action<string> BrowserNotify;
 
+		/// <summary>
+		/// Set by the browser host: restarts the game by reloading the page, once the support directory
+		/// (settings.yaml included) is saved in the browser's storage. "Restart Now" in the settings calls it.
+		/// </summary>
+		public static Action BrowserRestart;
+
 		/// <summary>How many UI actions failed and sent the player back to the main menu (diagnostics).</summary>
 		public static int BrowserUiActionsFailed { get; private set; }
 
