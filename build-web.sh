@@ -473,15 +473,21 @@ PY
 	echo "index.html: Content-Security-Policy in <meta>: ${CSP}"
 fi
 
-# Precompressed copies of the data for the web server (the SDK already compressed _framework and
-# the page's own files). deploy/Caddyfile serves them with "precompressed zstd br gzip".
-python3 -I "${SRC_WEB}/tools/precompress.py" "${DIST}/data"
-
 # Brotli copies of everything compressible, each checked against its file (tools/brotli.mjs): a host
 # without content negotiation (R2) serves exactly one encoding per object, the .br copy.
 find "${DIST}" -type f \( -name '*.html' -o -name '*.js' -o -name '*.json' -o -name '*.wasm' -o -name '*.dat' -o -name '*.bin' -o -name '*.svg' \) \
 	! -name 'content.*' -print0 | sort -z | xargs -0 "${EMSDK_NODE}" "${SRC_WEB}/tools/brotli.mjs" > "${OBJ}/brotli.log"
 echo "brotli: $(grep -c '"kept"' "${OBJ}/brotli.log") checked, $(grep -vc '"kept"' "${OBJ}/brotli.log") written"
+
+# What a first visit downloads until the main menu, in the bytes the publish uploads (so after the brotli
+# copies), into build.json: the start screen shows the size, and checks the list against the browser's
+# cache (tools/publish.py first-visit). build.json changed, so its brotli copy is made again.
+python3 -I "${SRC_WEB}/tools/publish.py" first-visit "${DIST}" --encoding "${WEBRA_PUBLISH_ENCODING:-br}"
+"${EMSDK_NODE}" "${SRC_WEB}/tools/brotli.mjs" "${DIST}/data/build.json" >> "${OBJ}/brotli.log"
+
+# Precompressed copies of the data for the web server (the SDK already compressed _framework and
+# the page's own files). deploy/Caddyfile serves them with "precompressed zstd br gzip".
+python3 -I "${SRC_WEB}/tools/precompress.py" "${DIST}/data"
 
 # The publish manifest, next to dist/: every object to upload with its headers, and what the CDN must add
 # (tools/publish.py). Not for builds with local content, which must never be published.
