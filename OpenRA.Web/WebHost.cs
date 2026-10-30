@@ -41,6 +41,10 @@ namespace OpenRA.Web
 		// The runtime starts without running Main: the page drives the engine through the exports below.
 		public static void Main() { }
 
+		/// <summary>Shows a message to the player over the game until closed (page module "webra-page").</summary>
+		[JSImport("notify", "webra-page")]
+		private static partial void JsNotify(string text);
+
 		/// <summary>Initializes the engine and loads the mod and its shellmap. Blocks until done.</summary>
 		[JSExport]
 		public static void Boot(string[] args)
@@ -51,6 +55,7 @@ namespace OpenRA.Web
 			try
 			{
 				Network.NetworkConnection.StreamTransportFactory = WebSocketTransport.Open;
+				Game.BrowserNotify = JsNotify;
 				Game.BrowserInitialize(args);
 			}
 			catch (Exception e)
@@ -231,6 +236,7 @@ namespace OpenRA.Web
 			sb.Append(CultureInfo.InvariantCulture, $"\"deferredMapsPending\":{PendingMaps.Count},");
 			sb.Append(CultureInfo.InvariantCulture, $"\"deferredMapsMs\":{deferredMapsMilliseconds:F1},");
 			sb.Append(CultureInfo.InvariantCulture, $"\"deferredMapsSliceMsWorst\":{deferredMapsSliceMillisecondsWorst:F1},");
+			sb.Append(CultureInfo.InvariantCulture, $"\"uiActionsFailed\":{Game.BrowserUiActionsFailed},");
 			sb.Append(CultureInfo.InvariantCulture, $"\"mapsAvailable\":{Game.ModData?.MapCache.Count(m => m.Status == MapStatus.Available) ?? 0}");
 			sb.Append('}');
 

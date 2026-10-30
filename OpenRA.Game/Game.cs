@@ -757,7 +757,7 @@ namespace OpenRA
 				}
 
 				using (new PerfSample("render_flip"))
-					Renderer.EndFrame(new DefaultInputHandler(OrderManager.World));
+					Renderer.EndFrame(OperatingSystem.IsBrowser() ? new BrowserInputHandler(OrderManager.World) : new DefaultInputHandler(OrderManager.World));
 
 				if (takeScreenshot)
 				{

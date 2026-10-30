@@ -91,6 +91,71 @@ namespace OpenRA
 				throw new PlatformNotSupportedException($"{BrowserNoLocalServer}: a local server needs to listen on a socket. {BrowserNoLocalServerHint}");
 		}
 
+		/// <summary>Set by the browser host: shows a message to the player over the game.</summary>
+		public static Action<string> BrowserNotify;
+
+		/// <summary>How many UI actions failed and sent the player back to the main menu (diagnostics).</summary>
+		public static int BrowserUiActionsFailed { get; private set; }
+
+		static bool browserUiRecoveryPending;
+
+		// Browser only: a UI action (a click, a key) that throws would otherwise escape the frame and stop
+		// the page. Input handlers run unsynced (Sync.RunUnsynced: they may not change the simulation), so
+		// catching here cannot desync a match. The UI may be half way through a change, though, so the
+		// player leaves whatever it was in (a match too: for the other players that is the same as the
+		// page stopping) and returns to a freshly loaded main menu, with a notice that says what failed.
+		sealed class BrowserInputHandler : IInputHandler
+		{
+			readonly DefaultInputHandler inner;
+
+			public BrowserInputHandler(World world)
+			{
+				inner = new DefaultInputHandler(world);
+			}
+
+			public void ModifierKeys(Modifiers mods) => Run(() => inner.ModifierKeys(mods));
+			public void OnKeyInput(KeyInput input) => Run(() => inner.OnKeyInput(input));
+			public void OnMouseInput(MouseInput input) => Run(() => inner.OnMouseInput(input));
+			public void OnTextInput(string text) => Run(() => inner.OnTextInput(text));
+
+			static void Run(Action action)
+			{
+				// Input that arrives before the recovery has run goes nowhere: the UI may be broken.
+				if (browserUiRecoveryPending)
+					return;
+
+				try
+				{
+					action();
+				}
+				catch (Exception e)
+				{
+					BrowserUiActionFailed(e);
+				}
+			}
+		}
+
+		static void BrowserUiActionFailed(Exception e)
+		{
+			BrowserUiActionsFailed++;
+			Log.Write("debug", $"A UI action failed; returning to the main menu. {e}");
+			Console.Error.WriteLine("OpenRA.Web: a UI action failed: " + e);
+
+			browserUiRecoveryPending = true;
+			var message = $"Something went wrong in the game ({e.GetBaseException().Message}), so it returned to the main menu.";
+
+			// Not from inside the input pump (this runs in the middle of Renderer.EndFrame): on the next tick,
+			// as RestartGame does.
+			RunAfterTick(() =>
+			{
+				browserUiRecoveryPending = false;
+				Disconnect();
+				Ui.ResetAll();
+				LoadShellMap();
+				BrowserNotify?.Invoke(message);
+			});
+		}
+
 		public static void BrowserInitialize(string[] args)
 		{
 			if (!OperatingSystem.IsBrowser())
