@@ -67,6 +67,18 @@ export async function toggleFullscreen() {
 	}
 }
 
+// The engine names its window ("OpenRA - Red Alert"), and emscripten's SDL writes a window title into
+// document.title. A title the build set for its site (WEBRA_PAGE_TITLE, written as <title data-keep>)
+// stays on the tab instead; without one, the tab shows the window title as before.
+export function keepPageTitle() {
+	const element = document.querySelector('title[data-keep]');
+	if (!element)
+		return;
+
+	const title = element.textContent;
+	Object.defineProperty(document, 'title', { configurable: true, get: () => title, set: () => {} });
+}
+
 // Keys the game binds that browsers would act on: F1-F12 (all are default hotkeys, with and without
 // Ctrl), Tab, Ctrl+letter/digit (control groups, and Ctrl+S/F/P/D/... would open browser dialogs),
 // Alt+arrows (history navigation), a lone Alt (Firefox shows its menu bar) and Alt with a letter, a

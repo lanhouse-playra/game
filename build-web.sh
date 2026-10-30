@@ -435,6 +435,7 @@ cat > "${DIST}/data/build.json" << EOF
 EOF
 
 # The page title (WEBRA_PAGE_TITLE). Only the browser tab's title: the game's own name and window title stay.
+# data-keep tells the page to keep it on the tab once the engine runs (webra-page.js keepPageTitle).
 if [ -n "${WEBRA_PAGE_TITLE:-}" ]; then
 	python3 -I - "${DIST}/index.html" "${WEBRA_PAGE_TITLE}" << 'PY'
 import html, sys
@@ -442,7 +443,7 @@ path, title = sys.argv[1], sys.argv[2]
 page = open(path, encoding="utf-8").read()
 anchor = "<title>OpenRA</title>"
 assert page.count(anchor) == 1, "index.html: no single <title>OpenRA</title>"
-page = page.replace(anchor, "<title>" + html.escape(title) + "</title>")
+page = page.replace(anchor, "<title data-keep>" + html.escape(title) + "</title>")
 open(path, "w", encoding="utf-8").write(page)
 PY
 	# The SDK's compressed copies of index.html are stale now.
