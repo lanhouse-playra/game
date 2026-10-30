@@ -103,6 +103,10 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 				{ "content", content },
 			});
 
+			// The browser build cannot see discs or other installations.
+			if (OperatingSystem.IsBrowser())
+				BrowserUnavailable.Disable(sourceButton, "TOOLTIP_CONTAINER");
+
 			var backButton = panel.Get<ButtonWidget>("BACK_BUTTON");
 			backButton.Bounds.Y += headerHeight;
 			backButton.OnClick = () => { Ui.CloseWindow(); onCancel(); };

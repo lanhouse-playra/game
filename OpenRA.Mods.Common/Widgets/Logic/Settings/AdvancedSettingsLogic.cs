@@ -44,6 +44,14 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 			SettingsUtils.BindCheckboxPref(panel, "CHECK_VERSION_CHECKBOX", debugSettings, "CheckVersion");
 			SettingsUtils.BindCheckboxPref(panel, "ENABLE_DISCORD_SERVICE", gameSettings, "EnableDiscordService");
 
+			// The browser build cannot use these: UPnP/NAT-PMP needs sockets (the page also forces it off at boot,
+			// since a stored "true" stopped every later boot), Discord rich presence a local IPC pipe.
+			if (OperatingSystem.IsBrowser())
+			{
+				BrowserUnavailable.Disable(panel.Get<CheckboxWidget>("NAT_DISCOVERY"), "SETTINGS_TOOLTIP_CONTAINER");
+				BrowserUnavailable.Disable(panel.Get<CheckboxWidget>("ENABLE_DISCORD_SERVICE"), "SETTINGS_TOOLTIP_CONTAINER");
+			}
+
 			var ssi = panel.Get<CheckboxWidget>("SENDSYSINFO_CHECKBOX");
 			ssi.IsDisabled = () => !gameSettings.FetchNews;
 
@@ -87,7 +95,10 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 				debugSettings.CheckVersion = defaultDebugSettings.CheckVersion;
 				debugSettings.EnableDebugCommandsInReplays = defaultDebugSettings.EnableDebugCommandsInReplays;
 				debugSettings.EnableSimulationPerfLogging = defaultDebugSettings.EnableSimulationPerfLogging;
-				gameSettings.EnableDiscordService = defaultGameSettings.EnableDiscordService;
+
+				// Browser: disabled there, and off (the page passes it at boot).
+				if (!OperatingSystem.IsBrowser())
+					gameSettings.EnableDiscordService = defaultGameSettings.EnableDiscordService;
 			};
 		}
 	}

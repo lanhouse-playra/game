@@ -255,6 +255,20 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 				resolutionPresetDropdown.OnMouseDown = _ => ShowResolutionPresetDropdown(resolutionPresetDropdown, windowWidth, windowHeight);
 			}
 
+			// The browser build: the page is the window. The engine starts windowed at the size of the browser
+			// window (main.js bootArguments), on the one display the browser gives it, and the browser always
+			// syncs to the display; the page's own fullscreen button and Alt+Enter cover fullscreen.
+			if (OperatingSystem.IsBrowser())
+			{
+				BrowserUnavailable.Disable(windowModeDropdown, "SETTINGS_TOOLTIP_CONTAINER");
+				BrowserUnavailable.Disable(displaySelectionDropDown, "SETTINGS_TOOLTIP_CONTAINER");
+				BrowserUnavailable.Disable(panel.Get<CheckboxWidget>("VSYNC_CHECKBOX"), "SETTINGS_TOOLTIP_CONTAINER");
+				BrowserUnavailable.Disable(windowWidth);
+				BrowserUnavailable.Disable(windowHeight);
+				if (resolutionPresetDropdown != null)
+					BrowserUnavailable.Disable(resolutionPresetDropdown, "SETTINGS_TOOLTIP_CONTAINER");
+			}
+
 			var restartDesc = panel.Get("VIDEO_RESTART_REQUIRED_DESC");
 			restartDesc.IsVisible = () => graphicSettings.Mode != originalGraphicSettings.Mode ||
 				graphicSettings.VideoDisplay != originalGraphicSettings.VideoDisplay ||
@@ -295,9 +309,15 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 				graphicSettings.MaxFramerate = defaultGraphicSettings.MaxFramerate;
 				graphicSettings.CapFramerateToGameFps = defaultGraphicSettings.CapFramerateToGameFps;
 				graphicSettings.GLProfile = defaultGraphicSettings.GLProfile;
-				graphicSettings.Mode = defaultGraphicSettings.Mode;
-				graphicSettings.VideoDisplay = defaultGraphicSettings.VideoDisplay;
-				graphicSettings.WindowedSize = defaultGraphicSettings.WindowedSize;
+
+				// Browser: disabled there; the page sets them at boot.
+				if (!OperatingSystem.IsBrowser())
+				{
+					graphicSettings.Mode = defaultGraphicSettings.Mode;
+					graphicSettings.VideoDisplay = defaultGraphicSettings.VideoDisplay;
+					graphicSettings.WindowedSize = defaultGraphicSettings.WindowedSize;
+				}
+
 				graphicSettings.CursorDouble = defaultGraphicSettings.CursorDouble;
 				graphicSettings.ViewportDistance = defaultGraphicSettings.ViewportDistance;
 

@@ -79,9 +79,11 @@ namespace OpenRA
 		/// </summary>
 		public static bool CanHostLocalServer => !OperatingSystem.IsBrowser();
 
-		// What the browser build tells the player about the entries above. The mod's fluent files must equal
-		// the upstream release (servers admit a client by its mod data), so these cannot be fluent messages.
-		public const string BrowserNoLocalServer = "Not available in the browser version";
+		// What the browser build tells the player about entries it cannot offer: the ones above, and settings
+		// that need a desktop (a window, a disc drive, a router, Discord). The mod's fluent files must equal the
+		// upstream release (servers admit a client by its mod data), so these cannot be fluent messages.
+		public const string BrowserNotAvailable = "Not available in the browser version";
+		public const string BrowserNoLocalServer = BrowserNotAvailable;
 		public const string BrowserNoLocalServerHint = "Join a server from Multiplayer.";
 		public const string BrowserNoHostingHint = "Join a server from the list, or with Direct IP.";
 
