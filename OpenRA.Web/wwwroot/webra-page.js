@@ -69,11 +69,24 @@ export async function toggleFullscreen() {
 
 // Keys the game binds that browsers would act on: F1-F12 (all are default hotkeys, with and without
 // Ctrl), Tab, Ctrl+letter/digit (control groups, and Ctrl+S/F/P/D/... would open browser dialogs),
-// Alt+arrows (history navigation) and a lone Alt (Firefox shows its menu bar). The events still
-// reach the game; only the browser's default action is cancelled. Some shortcuts (Ctrl+W, Ctrl+T,
-// Ctrl+N) cannot be cancelled by a page outside fullscreen keyboard lock.
+// Alt+arrows (history navigation), a lone Alt (Firefox shows its menu bar) and Alt with a letter, a
+// digit or a punctuation key (see altGameKey). The events still reach the game; only the browser's
+// default action is cancelled. Some shortcuts (Ctrl+W, Ctrl+T, Ctrl+N) cannot be cancelled by a page
+// outside fullscreen keyboard lock.
 // Alt+Enter toggles fullscreen.
 export function captureKeys({ isActive, keepDevTools = false }) {
+	// Alt+letter, Alt+digit (top row) and Alt+punctuation: the default hotkeys use Alt+A/S/D/F (unit
+	// stances), Alt+Q/W/E/R (restore a map bookmark), Alt+1-0 (jump to a control group) and Alt+Shift+=
+	// (hide the interface), and any of these keys can be bound with Alt. Browsers act on some of them:
+	// Alt+F and Alt+E open Chrome's menu, Alt+D focuses the address bar, Alt+1-8 switch tabs in Chrome on
+	// Linux, and Firefox's menu bar takes Alt+letters. Left to the browser: AltGr (it types characters on
+	// many keyboard layouts), the numeric keypad (Windows Alt codes) and macOS, where Option+key types
+	// characters (accents in chat) and browsers bind nothing to it; the game gets those keys there anyway.
+	const mac = /Mac|iPhone|iPad/.test(navigator.platform || '');
+	const altKeys = /^(Key[A-Z]|Digit[0-9]|Minus|Equal|BracketLeft|BracketRight|Backslash|Semicolon|Quote|Backquote|Comma|Period|Slash|IntlBackslash)$/;
+	const altGameKey = e => !mac && e.altKey && !e.ctrlKey && !e.metaKey &&
+		!(e.getModifierState && e.getModifierState('AltGraph')) && altKeys.test(e.code);
+
 	const onKeyDown = e => {
 		if (!isActive())
 			return;
@@ -88,7 +101,7 @@ export function captureKeys({ isActive, keepDevTools = false }) {
 		if (keepDevTools && (e.key === 'F12' || (e.ctrlKey && e.shiftKey && /^[ijc]$/i.test(e.key))))
 			return;
 
-		if (fkey || e.key === 'Tab' || (e.altKey && e.key.startsWith('Arrow')) || e.key === 'Alt')
+		if (fkey || e.key === 'Tab' || (e.altKey && e.key.startsWith('Arrow')) || e.key === 'Alt' || altGameKey(e))
 			e.preventDefault();
 		else if ((e.ctrlKey || e.metaKey) && !/^[cvx]$/i.test(e.key))
 			e.preventDefault();
