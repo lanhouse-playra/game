@@ -20,7 +20,7 @@ const params = new URLSearchParams(location.search);
 
 // Every file of the build is addressed relative to the directory this module was loaded from, not to
 // the page's address or the site's root: the same build works at the root of a site and under a path
-// (https://play.lanhouse.app/webra/), and a page address without the trailing slash or with index.html
+// (https://example.org/webra/), and a page address without the trailing slash or with index.html
 // at the end does not change where the files are. Nothing is configured per path; the publisher only
 // has to serve the build's files under one directory.
 const BASE = new URL('./', import.meta.url);
