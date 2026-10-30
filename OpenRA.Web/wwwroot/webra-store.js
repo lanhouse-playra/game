@@ -5,14 +5,15 @@
 // the License, or (at your option) any later version. For more
 // information, see COPYING.
 
-// Browser storage for OpenRA.Web (IndexedDB database "webra"):
+// Browser storage for OpenRA.Web (an IndexedDB database, "webra" when the page is served at the root of
+// its site; main.js chooses the name):
 //   content  the game content installed on the first visit (path -> bytes), plus one
 //            "#installed/<mod>" record that describes the installation;
 //   support  the engine's support directory, except Content/ and Logs/: settings.yaml, the player
 //            profile key, replays, downloaded maps, the news cache (path -> { data, mtime }).
 // Without IndexedDB (blocked storage, some private modes) everything still works, in memory only.
 
-const DB_NAME = 'webra';
+const DEFAULT_DB_NAME = 'webra';
 const DB_VERSION = 1;
 
 const request = req => new Promise((resolve, reject) => {
@@ -31,17 +32,17 @@ export class Store {
 		this.db = db;
 	}
 
-	static async open() {
+	static async open(name = DEFAULT_DB_NAME) {
 		if (!globalThis.indexedDB)
 			return null;
 
 		try {
-			const req = indexedDB.open(DB_NAME, DB_VERSION);
+			const req = indexedDB.open(name, DB_VERSION);
 			req.onupgradeneeded = () => {
 				const db = req.result;
-				for (const name of ['content', 'support'])
-					if (!db.objectStoreNames.contains(name))
-						db.createObjectStore(name);
+				for (const store of ['content', 'support'])
+					if (!db.objectStoreNames.contains(store))
+						db.createObjectStore(store);
 			};
 
 			return new Store(await request(req));
@@ -86,8 +87,8 @@ export class Store {
 
 // Deletes every saved support file (settings, profile, replays, maps); the game content stays.
 // Works without a Store too (IndexedDB that cannot be opened normally): then the whole database goes.
-export async function resetSavedData() {
-	const store = await Store.open();
+export async function resetSavedData(name = DEFAULT_DB_NAME) {
+	const store = await Store.open(name);
 	if (store) {
 		await store.clear('support');
 		store.db.close();
@@ -95,7 +96,7 @@ export async function resetSavedData() {
 	}
 
 	if (globalThis.indexedDB)
-		await request(indexedDB.deleteDatabase(DB_NAME));
+		await request(indexedDB.deleteDatabase(name));
 }
 
 const isQuotaError = e => !!e && (e.name === 'QuotaExceededError' || /quota/i.test(String(e.message || e)));

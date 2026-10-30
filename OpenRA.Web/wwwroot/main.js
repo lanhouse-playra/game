@@ -13,10 +13,24 @@
 
 import { dotnet } from './_framework/dotnet.js';
 import { Store, SupportSync, resetSavedData } from './webra-store.js';
-import { ensureContent } from './webra-content.js';
+import { ensureContent, relayPackageUrl, sitePackageUrl } from './webra-content.js';
 import * as page from './webra-page.js';
 
 const params = new URLSearchParams(location.search);
+
+// Every file of the build is addressed relative to the directory this module was loaded from, not to
+// the page's address or the site's root: the same build works at the root of a site and under a path
+// (https://play.lanhouse.app/webra/), and a page address without the trailing slash or with index.html
+// at the end does not change where the files are. Nothing is configured per path; the publisher only
+// has to serve the build's files under one directory.
+const BASE = new URL('./', import.meta.url);
+const at = path => new URL(path, BASE).href;
+
+// IndexedDB is shared by the whole origin, and a game storefront serves several games, possibly several
+// builds of this one, from one origin. A build at the root keeps the name earlier builds used ("webra");
+// a build under a path gets a database of its own ("webra:/webra/"). data/build.json can name one
+// ("storage"), e.g. to keep the players' saved data when the path changes.
+const storageNameFor = build => build.storage || (BASE.pathname === '/' ? 'webra' : `webra:${BASE.pathname}`);
 
 // Debug URL parameters (?arg=, ?mod=, ?rt=, ?env=, ?interp=, ?luatest=, ?proxy=) work only in dev
 // builds (build-web.sh WEBRA_DEV=1, data/build.json "dev": true). On a hosted page a crafted link
@@ -108,7 +122,7 @@ async function resetSaved() {
 		WebRA.support.stop();
 
 	try {
-		await resetSavedData();
+		await resetSavedData(WebRA.storageName || storageNameFor(WebRA.build || {}));
 		WebRA.resetDone = true;
 	} catch (e) {
 		WebRA.errors.push(`reset: ${e}`);
@@ -165,13 +179,13 @@ const progress = {
 	},
 };
 
-// A URL from build.json: absolute, or relative to the page. ws: true gives a WebSocket URL
-// (ws: for an http page, wss: for https).
+// A URL from build.json: absolute, or relative to the build's directory (BASE). ws: true gives a
+// WebSocket URL (ws: for an http page, wss: for https).
 function resolveUrl(value, ws = false) {
 	if (/^wss?:\/\//.test(value))
 		return value;
 
-	const url = new URL(value, location.href);
+	const url = new URL(value, BASE);
 	if (ws)
 		url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
 	return url.href;
@@ -256,26 +270,29 @@ function stageFiles(FS, files) {
 	return n;
 }
 
-// The game content: from IndexedDB or the relay, or, in local test builds, from data/content.*.
+// The game content: from IndexedDB, or downloaded from our own site (build.contentUrl) or through the
+// relay (build.contentRelay), or, in local test builds, from data/content.*.
 async function loadContent(build, store) {
 	const started = now();
 	if (build.content) {
-		const bundle = await fetchBundle('data/content', (received, total) =>
+		const bundle = await fetchBundle(at('data/content'), (received, total) =>
 			progress.set('content', 'Game content (local test build)', received, total));
 		WebRA.load.content = { source: 'bundle', ms: now() - started };
 		return { bundle };
 	}
 
-	const manifest = await fetch(build.contentManifest, { cache: 'no-cache' }).then(r => {
+	const manifest = await fetch(at(build.contentManifest), { cache: 'no-cache' }).then(r => {
 		if (!r.ok)
 			throw new Error(`Failed to download ${build.contentManifest}: ${r.status}`);
 		return r.json();
 	});
 
+	const fromSite = Boolean(build.contentUrl);
 	const result = await ensureContent({
 		manifest,
 		store,
-		relayBase: resolveUrl(build.contentRelay || 'content'),
+		packageUrl: fromSite ? sitePackageUrl(resolveUrl(build.contentUrl)) : relayPackageUrl(resolveUrl(build.contentRelay || 'content')),
+		cache: fromSite ? 'default' : 'no-store',
 		onStatus: text => {
 			ui.note.hidden = false;
 			ui.step.textContent = text;
@@ -776,8 +793,11 @@ async function main() {
 		ui.notice.hidden = true;
 	});
 
-	const build = WebRA.build = await fetch('data/build.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+	const build = WebRA.build = await fetch(at('data/build.json'), { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
 	devBuild = build.dev === true;
+	const storageName = WebRA.storageName = storageNameFor(build);
+	if (build.contentUrl)
+		ui.note.textContent = 'First visit: the original Red Alert game files (freeware), about 13 MB, are downloaded from this site and kept in this browser, so later visits start without downloading them again.';
 	if (!devBuild && [...params.keys()].some(k => DEBUG_PARAMS.includes(k)))
 		console.warn('[webra] debug URL parameters are ignored: this is not a dev build');
 
@@ -823,7 +843,7 @@ async function main() {
 	}
 
 	setPhase('downloading', 'Downloading');
-	const storePromise = Store.open();
+	const storePromise = Store.open(storageName);
 	// A replay launched at boot (dev builds: ?arg=Launch.Replay=...) needs its map before the engine
 	// starts: then the maps package is part of the loading screen, as before it was split off.
 	const mapsAtBoot = Boolean(build.mapData) && debugParams('arg').some(a => a.startsWith('Launch.Replay='));
@@ -833,14 +853,14 @@ async function main() {
 			progress.set('framework', 'Game engine', frameworkBytes, frameworkBytes);
 			return r;
 		}),
-		fetchBundle(build.engineData || 'data/engine', (received, total) =>
+		fetchBundle(at(build.engineData || 'data/engine'), (received, total) =>
 			progress.set('engine', 'Engine data', received, total)).then(b => {
 			WebRA.load.engineMs = now();
 			return b;
 		}),
 		storePromise.then(s => loadContent(build, s)),
 		storePromise,
-		mapsAtBoot ? fetchBundle(build.mapData, (received, total) => progress.set('maps', 'Maps', received, total)) : null,
+		mapsAtBoot ? fetchBundle(at(build.mapData), (received, total) => progress.set('maps', 'Maps', received, total)) : null,
 	]);
 
 	if (!engine)
@@ -900,7 +920,7 @@ async function main() {
 	watchFullscreenButton();
 	const { sleep } = startFrameLoop(host);
 	if (build.mapData && !mapsBundle)
-		loadDeferredMaps(build.mapData, FS, host, sleep);
+		loadDeferredMaps(at(build.mapData), FS, host, sleep);
 }
 
 // Content-Security-Policy violations (deploy/webra.caddy) are recorded for tests and bug reports.
