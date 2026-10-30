@@ -45,11 +45,12 @@ namespace OpenRA.Server
 		readonly BlockingCollection<byte[]> sendQueue = [];
 		readonly Queue<int> pingHistory = [];
 
-		public Connection(Server server, Socket socket, string authToken)
+		// endPoint is the client's address: the socket's remote end point, or the one named by a trusted proxy.
+		public Connection(Server server, Socket socket, EndPoint endPoint, string authToken)
 		{
 			PlayerIndex = server.ChooseFreePlayerIndex();
 			AuthToken = authToken;
-			EndPoint = socket.RemoteEndPoint;
+			EndPoint = endPoint;
 
 			new Thread(SendReceiveLoop)
 			{
