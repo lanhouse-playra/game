@@ -2,6 +2,7 @@
 /dist/
 # The engine-wide .gitignore ignores *.html
 !/wwwroot/*.html
+!/hosting/*.html
 # The publish manifest build-web.sh writes next to dist/ (tools/publish.py)
 /publish.json
 __pycache__/
