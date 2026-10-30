@@ -9,6 +9,7 @@
  */
 #endregion
 
+using System;
 using OpenRA.Widgets;
 
 namespace OpenRA.Mods.Common.Widgets.Logic
@@ -37,6 +38,10 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 		/// </summary>
 		public static void Disable(ButtonWidget button, string tooltipContainer, string hint = Game.BrowserNoLocalServerHint)
 		{
+			// Dev pages only (release pages ignore ?env=): keep the entries, to test the browser's UI action guard.
+			if (Environment.GetEnvironmentVariable("WEBRA_TEST_LOCAL_SERVER_ENTRIES") == "1")
+				return;
+
 			button.IsDisabled = () => true;
 
 			// TooltipContainer is a chrome field: set it the way the widget loader does.

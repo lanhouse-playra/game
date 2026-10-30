@@ -70,9 +70,10 @@ function fail(error) {
 }
 
 // A message for the player that stays visible over the game until closed (storage full, background
-// clock blocked). Each text is shown once per page load.
-function notify(text) {
-	if (WebRA.notices.includes(text))
+// clock blocked). Each text is shown once per page load, unless `always` (an error the engine recovered
+// from, which the player caused again).
+function notify(text, always = false) {
+	if (!always && WebRA.notices.includes(text))
 		return;
 
 	console.warn(`[webra] notice: ${text}`);
@@ -850,6 +851,8 @@ async function main() {
 	let transport = null;
 	const net = createNetModule(() => transport);
 	setModuleImports('webra-net', net);
+	// The engine shows errors it recovered from (a UI action that failed) as a notice.
+	setModuleImports('webra-page', { notify: text => notify(text, true) });
 	page.guardLeaving(() => net.openCount() > 0);
 
 	setPhase('staging', 'Installing');
