@@ -72,6 +72,25 @@ namespace OpenRA
 		/// <summary>For the host's diagnostics and test hooks.</summary>
 		public static Graphics.WorldRenderer BrowserGetWorldRenderer() => worldRenderer;
 
+		/// <summary>
+		/// False in the browser build, which plays online only: it cannot listen on a socket (nor run a
+		/// server thread), so it cannot run the local server behind skirmish, missions, saved games, the
+		/// map editor's "Play Map" and Create Server. Menus disable those entries when this is false.
+		/// </summary>
+		public static bool CanHostLocalServer => !OperatingSystem.IsBrowser();
+
+		// What the browser build tells the player about the entries above. The mod's fluent files must equal
+		// the upstream release (servers admit a client by its mod data), so these cannot be fluent messages.
+		public const string BrowserNoLocalServer = "Not available in the browser version";
+		public const string BrowserNoLocalServerHint = "Join a server from Multiplayer.";
+		public const string BrowserNoHostingHint = "Join a server from the list, or with Direct IP.";
+
+		static void CheckCanHostLocalServer()
+		{
+			if (!CanHostLocalServer)
+				throw new PlatformNotSupportedException($"{BrowserNoLocalServer}: a local server needs to listen on a socket. {BrowserNoLocalServerHint}");
+		}
+
 		public static void BrowserInitialize(string[] args)
 		{
 			if (!OperatingSystem.IsBrowser())

@@ -127,6 +127,15 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 			if (encyclopediaButton != null)
 				encyclopediaButton.OnClick = OpenEncyclopediaPanel;
 
+			// The browser build plays online only: these entries all lead to a local server.
+			if (!Game.CanHostLocalServer)
+			{
+				var tooltipContainer = LocalServerButtons.AddTooltipContainer(rootMenu, "LOCAL_SERVER_TOOLTIP_CONTAINER");
+				LocalServerButtons.Disable(skirmishButton, tooltipContainer);
+				LocalServerButtons.Disable(missionsButton, tooltipContainer);
+				LocalServerButtons.Disable(loadButton, tooltipContainer);
+			}
+
 			singleplayerMenu.Get<ButtonWidget>("BACK_BUTTON").OnClick = () => SwitchMenu(MenuType.Main);
 
 			// Extras menu

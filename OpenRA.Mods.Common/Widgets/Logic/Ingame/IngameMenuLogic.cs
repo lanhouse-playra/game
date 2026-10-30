@@ -343,7 +343,8 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 
 		void CreateRestartButton()
 		{
-			if (world.Type != WorldType.Regular || !isSinglePlayer)
+			// Restarting a game (not a replay) runs a new local server, which the browser build cannot.
+			if (world.Type != WorldType.Regular || !isSinglePlayer || (!Game.CanHostLocalServer && !world.IsReplay))
 				return;
 
 			var iop = world.WorldActor.TraitsImplementing<IObjectivesPanel>().FirstOrDefault();
@@ -575,6 +576,10 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 						}
 					});
 				};
+
+			// Playing the map runs a local server, which the browser build cannot.
+			if (!Game.CanHostLocalServer)
+				LocalServerButtons.Disable(button, LocalServerButtons.AddTooltipContainer(buttonContainer.Parent, "LOCAL_SERVER_TOOLTIP_CONTAINER"));
 		}
 
 		void CreateBackToEditorButton()

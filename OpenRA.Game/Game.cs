@@ -959,6 +959,8 @@ namespace OpenRA
 
 		public static ConnectionTarget CreateServer(ServerSettings settings)
 		{
+			CheckCanHostLocalServer();
+
 			var endpoints = new List<IPEndPoint>
 			{
 				new(IPAddress.IPv6Any, settings.ListenPort),
@@ -971,6 +973,8 @@ namespace OpenRA
 
 		public static ConnectionTarget CreateLocalServer(string map, bool isSkirmish = false)
 		{
+			CheckCanHostLocalServer();
+
 			var settings = new ServerSettings()
 			{
 				Name = "Skirmish Game",
