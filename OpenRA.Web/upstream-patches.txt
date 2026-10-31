@@ -8,6 +8,7 @@ OpenRA.Game/CryptoUtil.cs
 OpenRA.Game/Game.Browser.cs
 OpenRA.Game/Game.cs
 OpenRA.Game/GameRules/Ruleset.cs
+OpenRA.Game/LocalPlayerProfile.cs
 OpenRA.Game/ManagedRsa.cs
 OpenRA.Game/Map/MapCache.cs
 OpenRA.Game/Map/MapDirectoryTracker.cs
