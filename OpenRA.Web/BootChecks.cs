@@ -30,7 +30,7 @@ namespace OpenRA.Web
 		// The Mono interpreter of .NET 10.0.14 corrupts memory when a method tiers up while frames of the
 		// same method are suspended in native code (Lua -> CLR -> Lua re-entrancy, as in the shellmap's
 		// WorldLoaded). "-tiering" compiles every method optimized on first call, so nothing tiers up.
-		// main.js sets it; only dev builds can override it (?interp=). See docs/phase0-report.md.
+		// main.js sets it; only dev builds can override it (?interp=).
 		const string InterpreterWorkaround = "-tiering";
 
 		public static void Run()

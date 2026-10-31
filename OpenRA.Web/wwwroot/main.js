@@ -900,7 +900,7 @@ async function main() {
 		// Mono's interpreter (.NET 10.0.14) corrupts memory during OpenRA's Lua (Eluant) callbacks when
 		// methods tier up while re-entered from native code: "memory access out of bounds" in Chrome,
 		// a renderer crash in headless Chromium. Compiling every method optimized from the start
-		// (no tiering) avoids it. Dev builds can override it with ?interp=<options>; see phase0-report.md.
+		// (no tiering) avoids it. Dev builds can override it with ?interp=<options>.
 		// WebHost.Boot refuses to start a non-dev build without it (BootChecks.cs).
 		.withEnvironmentVariable('MONO_INTERPRETER_OPTIONS', debugParam('interp') ?? '-tiering');
 	for (const env of debugParams('env')) {
