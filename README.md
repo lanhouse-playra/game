@@ -51,15 +51,15 @@ separate fork. Please report problems with the browser version here, not to the 
 
 | Branch | What it is |
 |---|---|
-| `webra-lanhouse` | what runs on play.ra.lanhouse.app: `webra-release` plus the Lanhouse hosting target (start screen, page title, game content from its own site, object storage behind a CDN), the browser settings pass and the first-visit download size |
-| `webra-release` | the release candidate: the branches below, merged |
-| `webra-proxyip` | `Server.TrustedProxies`: real client addresses from trusted relays with the PROXY protocol |
-| `webra-perf` | in-match performance (frame pacing, GL shim, maps downloaded after the menu); no simulation change |
-| `webra-play` | a link that installs and remembers: content install, saved settings and replays, packaging for hosting |
-| `webra-net` | multiplayer: game connections through the WebSocket relay, ticking in hidden tabs |
-| `webra` | the first phase: OpenRA booting in the browser, reproducible official builds, pinned toolchain, conformance corpus |
+| `playra-main` | what runs on play.ra.lanhouse.app: `playra-release` plus the Lanhouse hosting target (start screen, page title, game content from its own site, object storage behind a CDN), the browser settings pass and the first-visit download size |
+| `playra-release` | the release candidate: the branches below, merged |
+| `playra-proxyip` | `Server.TrustedProxies`: real client addresses from trusted relays with the PROXY protocol |
+| `playra-perf` | in-match performance (frame pacing, GL shim, maps downloaded after the menu); no simulation change |
+| `playra-play` | a link that installs and remembers: content install, saved settings and replays, packaging for hosting |
+| `playra-net` | multiplayer: game connections through the WebSocket relay, ticking in hidden tabs |
+| `playra-boot` | the first phase: OpenRA booting in the browser, reproducible official builds, pinned toolchain, conformance corpus |
 
-Each branch builds on the ones below it (`webra-release` merges `webra-perf` and `webra-proxyip`); `webra-lanhouse`
+Each branch builds on the ones below it (`playra-release` merges `playra-perf` and `playra-proxyip`); `playra-main`
 contains all of them.
 
 ## Building
