@@ -503,7 +503,7 @@ if [ -n "${WEBRA_SPLASH:-}" ]; then
 		fi
 	done
 	python3 -I - "${DIST}/index.html" "${SPLASH_HTML}" "${VERSION}" "${SOURCE_LINK}" "${SPLASH_LOGO}" << 'PY'
-import html, re, sys
+import html, os, re, sys
 path, fragment_path, version, source, logo = sys.argv[1:]
 page = open(path, encoding="utf-8").read()
 fragment = open(fragment_path, encoding="utf-8").read()
@@ -513,10 +513,21 @@ for token in ("@VERSION@", "@SOURCE_URL@", "<!-- logo -->", "<!-- /logo -->"):
     assert fragment.count(token) == 1, f"{fragment_path}: no single {token}"
 fragment = fragment.replace("@VERSION@", html.escape(version)).replace("@SOURCE_URL@", html.escape(source, quote=True))
 if logo:
-    # The text between the markers names the site: it becomes the image's alternative text.
+    # The text between the markers names the site: it becomes the image's alternative text. The image's own size
+    # goes in as width and height, so the page holds its room (and its proportions) before it has loaded: an SVG's
+    # width and height attributes in px, a PNG's pixels.
     slot = re.search(r"<!-- logo -->(.*)<!-- /logo -->", fragment, re.S)
     text = html.escape(html.unescape(re.sub(r"<[^>]*>", "", slot.group(1))).strip(), quote=True)
-    fragment = fragment[:slot.start()] + f'<img src="{logo}" alt="{text}">' + fragment[slot.end():]
+    data = open(os.path.join(os.path.dirname(path), logo), "rb").read()
+    if logo.endswith(".svg"):
+        root = re.search(rb"<svg\b[^>]*>", data)
+        size = [re.search(rb'\s' + k + rb'="([0-9]+)(px)?"', root.group(0)) if root else None for k in (b"width", b"height")]
+        assert all(size), f"{logo}: the <svg> element needs width and height in px"
+        width, height = (int(m.group(1)) for m in size)
+    else:
+        assert data[:8] == b"\x89PNG\r\n\x1a\n" and data[12:16] == b"IHDR", f"{logo}: not a PNG"
+        width, height = int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+    fragment = fragment[:slot.start()] + f'<img src="{logo}" width="{width}" height="{height}" alt="{text}">' + fragment[slot.end():]
 page = page.replace("\t<!-- splash -->\n", fragment).replace('<body data-phase="loading">', '<body data-phase="splash">')
 open(path, "w", encoding="utf-8").write(page)
 PY
