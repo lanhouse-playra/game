@@ -4,9 +4,11 @@
 # and version string alone, so code it runs must be upstream's plus these reviewed patches.
 # mods/, glsl/ and "global mix database.dat" must always equal the tag.
 # Add a file here only together with the review of its change.
+OpenRA.Game/CryptoUtil.cs
 OpenRA.Game/Game.Browser.cs
 OpenRA.Game/Game.cs
 OpenRA.Game/GameRules/Ruleset.cs
+OpenRA.Game/ManagedRsa.cs
 OpenRA.Game/Map/MapCache.cs
 OpenRA.Game/Map/MapDirectoryTracker.cs
 OpenRA.Game/Map/MapPreview.cs
@@ -40,6 +42,7 @@ OpenRA.Platforms.Default/OpenAlSoundEngine.cs
 OpenRA.Platforms.Default/OpenGL.cs
 OpenRA.Platforms.Default/Sdl2GraphicsContext.cs
 OpenRA.Platforms.Default/Sdl2PlatformWindow.cs
+OpenRA.Test/OpenRA.Game/ManagedRsaTest.cs
 OpenRA.Test/OpenRA.Game/ProxyProtocolTest.cs
 OpenRA.Test/OpenRA.Game/StreamFrameReaderTest.cs
 README.md
