@@ -199,6 +199,10 @@ namespace OpenRA
 				if (p.IsZero)
 				{
 					p = candidate;
+
+					// Look for q from a new random start: the rest of this batch lies within 2^13 of p, much
+					// closer than TryFinish accepts.
+					next = BatchSize;
 					return false;
 				}
 

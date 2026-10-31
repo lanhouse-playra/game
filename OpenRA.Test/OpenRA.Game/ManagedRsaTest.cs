@@ -158,6 +158,7 @@ namespace OpenRA.Test
 				var e = B(key.Exponent);
 				Assert.That(p * q, Is.EqualTo(n));
 				Assert.That(p, Is.Not.EqualTo(q));
+				Assert.That(BigInteger.Abs(p - q).GetBitLength(), Is.GreaterThan(1024 - 100), "|p - q| > 2^(nlen/2 - 100) (FIPS 186-5 A.1.3)");
 				Assert.That(d * e % (p - 1), Is.EqualTo(BigInteger.One));
 				Assert.That(d * e % (q - 1), Is.EqualTo(BigInteger.One));
 				Assert.That(B(key.DP), Is.EqualTo(d % (p - 1)));
