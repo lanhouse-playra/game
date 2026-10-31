@@ -42,4 +42,5 @@ OpenRA.Platforms.Default/Sdl2GraphicsContext.cs
 OpenRA.Platforms.Default/Sdl2PlatformWindow.cs
 OpenRA.Test/OpenRA.Game/ProxyProtocolTest.cs
 OpenRA.Test/OpenRA.Game/StreamFrameReaderTest.cs
+README.md
 build-web.sh
