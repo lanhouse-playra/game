@@ -99,6 +99,51 @@ export async function resetSavedData(name = DEFAULT_DB_NAME) {
 		await request(indexedDB.deleteDatabase(name));
 }
 
+// Earlier builds kept everything in a database with another name (main.js passes it). Once the current
+// database is open, this moves the old one's support files (settings, player profile, replays, maps)
+// into it if it has none yet, then deletes the old database with its game content, which is downloaded
+// again: a returning player keeps the profile and the replays and is not left with a copy of the
+// content that nothing reads. Never throws and never waits for other tabs: a tab of an older build that
+// still has the old database open only delays its deletion until it closes.
+export async function retireDatabase(store, name) {
+	if (!name || !globalThis.indexedDB)
+		return;
+
+	try {
+		if (typeof indexedDB.databases === 'function' && !(await indexedDB.databases()).some(d => d.name === name))
+			return;
+
+		const old = await new Promise((resolve, reject) => {
+			const req = indexedDB.open(name);
+			// No such database (browsers without databases()): opening created an empty one, deleted below.
+			req.onupgradeneeded = () => req.transaction.abort();
+			req.onsuccess = () => resolve(req.result);
+			req.onerror = () => resolve(null);
+			req.onblocked = () => reject(new Error('blocked'));
+		});
+
+		if (old) {
+			try {
+				if (store && old.objectStoreNames.contains('support') && (await store.entries('support')).length === 0) {
+					const s = old.transaction('support').objectStore('support');
+					const [keys, values] = await Promise.all([request(s.getAllKeys()), request(s.getAll())]);
+					if (keys.length)
+						await store.write('support', keys.map((k, i) => [k, values[i]]));
+				}
+			} finally {
+				old.close();
+			}
+		}
+
+		await new Promise(resolve => {
+			const req = indexedDB.deleteDatabase(name);
+			req.onsuccess = req.onerror = req.onblocked = () => resolve();
+		});
+	} catch (e) {
+		console.warn(`[playra] could not retire the old database "${name}":`, e);
+	}
+}
+
 const isQuotaError = e => !!e && (e.name === 'QuotaExceededError' || /quota/i.test(String(e.message || e)));
 
 // Keeps the support directory of the emscripten filesystem in IndexedDB: restore() before the engine
