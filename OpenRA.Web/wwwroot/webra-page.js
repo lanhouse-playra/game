@@ -205,30 +205,80 @@ export function clampMouseAtEdges(canvas, isActive) {
 	});
 }
 
-// The engine asks master.openra.net for the version check and the news, which do not allow
-// cross-origin requests from pages. The runtime's HttpClient calls globalThis.fetch for each request,
-// so those two URLs are sent to our relay's master route instead (same query string).
+// The engine asks master.openra.net for the version check and the news, and forum.openra.net for player
+// profiles (the forum account, other players' badges) and badge images; neither allows cross-origin
+// requests from pages. The runtime's HttpClient calls globalThis.fetch for each request, so those URLs are
+// sent to our relay's master route instead: versioncheck and gamenews with the same query string, a profile
+// as <base>/forum/info/<fingerprint>, a badge image (a .png on the forum, no query) as <base>/forum/badge/<path>.
+// The relay checks each again; what does not match goes out unchanged (and fails as before).
 export function routeMasterRequests(relayBase) {
 	if (!relayBase)
 		return;
 
-	const base = relayBase.replace(/\/$/, '');
-	const routes = [
-		['https://master.openra.net/versioncheck?', `${base}/versioncheck?`],
-		['https://master.openra.net/gamenews?', `${base}/gamenews?`],
-	];
-
 	const original = globalThis.fetch.bind(globalThis);
 	globalThis.fetch = (input, init) => {
 		const url = typeof input === 'string' ? input : input instanceof URL ? input.href : null;
-		if (url) {
-			for (const [from, to] of routes)
-				if (url.startsWith(from))
-					return original(to + url.substring(from.length), init);
-		}
-
-		return original(input, init);
+		const routed = url && masterRoute(relayBase, url);
+		return routed ? original(routed, init) : original(input, init);
 	};
+}
+
+const FORUM = 'https://forum.openra.net/';
+const FORUM_PROFILE = /^https:\/\/forum\.openra\.net\/openra\/info\/([0-9a-f]{40})$/;
+const FORUM_BADGE = /^https:\/\/forum\.openra\.net\/((?!openra\/)[A-Za-z0-9._~\/-]+\.png)$/;
+
+// Where routeMasterRequests sends url, or null to leave it alone.
+export function masterRoute(relayBase, url) {
+	const base = relayBase.replace(/\/$/, '');
+	for (const [from, to] of [['https://master.openra.net/versioncheck?', '/versioncheck?'], ['https://master.openra.net/gamenews?', '/gamenews?']])
+		if (url.startsWith(from))
+			return base + to + url.substring(from.length);
+
+	if (!url.startsWith(FORUM))
+		return null;
+
+	let m = FORUM_PROFILE.exec(url);
+	if (m)
+		return `${base}/forum/info/${m[1]}`;
+
+	m = FORUM_BADGE.exec(url);
+	if (m && !m[1].split('/').some(s => s === '' || s === '.' || s === '..'))
+		return `${base}/forum/badge/${m[1]}`;
+
+	return null;
+}
+
+// Puts text on the clipboard (the forum key: Settings > Copy Key). The engine calls this while it handles the
+// click, within the click's user activation, which browsers require. The asynchronous Clipboard API first; a
+// selected textarea and execCommand('copy') where it is missing or refused.
+export async function copyText(text, refocus) {
+	try {
+		if (navigator.clipboard && navigator.clipboard.writeText) {
+			await navigator.clipboard.writeText(text);
+			return true;
+		}
+	} catch (e) {
+		console.warn('[webra] clipboard write refused, trying the fallback:', e);
+	}
+
+	const area = document.createElement('textarea');
+	area.value = text;
+	area.setAttribute('readonly', '');
+	area.style.position = 'fixed';
+	area.style.top = '0';
+	area.style.opacity = '0';
+	document.body.appendChild(area);
+	try {
+		area.select();
+		return document.execCommand('copy');
+	} catch (e) {
+		console.warn('[webra] clipboard fallback failed:', e);
+		return false;
+	} finally {
+		area.remove();
+		if (refocus)
+			refocus.focus();
+	}
 }
 
 // Prevents the browser's own menus and gestures over the game.

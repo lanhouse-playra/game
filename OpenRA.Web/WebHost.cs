@@ -17,6 +17,7 @@ using System.Linq;
 using System.Runtime.InteropServices.JavaScript;
 using System.Runtime.Versioning;
 using System.Text;
+using System.Threading.Tasks;
 using OpenRA.FileSystem;
 
 namespace OpenRA.Web
@@ -49,6 +50,11 @@ namespace OpenRA.Web
 		[JSImport("restart", "webra-page")]
 		private static partial void JsRestart();
 
+		/// <summary>Puts text on the system clipboard; true once it is there (page module "webra-page").</summary>
+		[JSImport("copyText", "webra-page")]
+		[return: JSMarshalAs<JSType.Promise<JSType.Boolean>>]
+		private static partial Task<bool> JsCopyText(string text);
+
 		/// <summary>Initializes the engine and loads the mod and its shellmap. Blocks until done.</summary>
 		[JSExport]
 		public static void Boot(string[] args)
@@ -61,6 +67,7 @@ namespace OpenRA.Web
 				Network.NetworkConnection.StreamTransportFactory = WebSocketTransport.Open;
 				Game.BrowserNotify = JsNotify;
 				Game.BrowserRestart = JsRestart;
+				Game.BrowserCopyText = JsCopyText;
 				Game.BrowserInitialize(args);
 			}
 			catch (Exception e)

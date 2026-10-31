@@ -11,6 +11,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using OpenRA.Graphics;
 using OpenRA.Mods.Common.Traits;
 using OpenRA.Widgets;
@@ -60,6 +61,23 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 
 		// Browser build only. Not a fluent message: the mod's fluent files must equal the release's.
 		const string BrowserAutoSaveHint = "Auto-save only runs in offline games.";
+
+		// The forum account in the browser build (InitBrowserForumAccount). Status lines fit the status label as the
+		// desktop's do: two lines of at most 50 characters.
+		const string BrowserForumAddKeyPage = "ucp.php?i=-openra-openrauseraccounts-ucp-useraccounts_module&mode=add_key";
+		const string BrowserKeyLabel = "This browser's key:";
+		const string BrowserForumLabel = "Your forum account:";
+		const string BrowserCopyKey = "Copy Key";
+		const string BrowserOpenForum = "Open Forum";
+		const string BrowserCreateKey = "Create Key";
+		const string BrowserCheckKey = "Check";
+		const string BrowserNoKey = "The browser version links with a key, not your\npassword. Create Key, then add it on the forum.";
+		const string BrowserCreatingKey = "Creating this browser's key...";
+		const string BrowserCreateKeyFailed = "Could not create a key. Please try again.";
+		const string BrowserAddKey = "Copy Key, then Open Forum (log in, paste it under\nAdd key, submit). Then press Check.";
+		const string BrowserKeyCopied = "Key copied. Open Forum, log in, paste it under\nAdd key and submit. Then press Check.";
+		const string BrowserCopyFailed = "The browser did not let the game copy the key.\nAllow clipboard access for this page, try again.";
+		const string BrowserKeyNotOnForum = "The forum does not know this key yet. Add it\nwith Open Forum, then press Check again.";
 
 		readonly int[] autoSaveSeconds = [0, 10, 30, 45, 60, 120, 180, 300, 600];
 
@@ -200,6 +218,9 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 			var forumButton = panel.Get<ButtonWidget>("FORUM_BUTTON");
 			forumButton.OnClick = () => Game.Renderer.TryOpenUrl(playerDatabase.Forum);
 
+			if (OperatingSystem.IsBrowser())
+				InitBrowserForumAccount(panel, localProfile, playerDatabase, profileStatusLabel, linkButton);
+
 			var autoSaveIntervalDropDown = panel.Get<DropDownButtonWidget>("AUTO_SAVE_INTERVAL_DROP_DOWN");
 			autoSaveIntervalDropDown.OnClick = () =>
 				ShowAutoSaveIntervalDropdown(autoSaveIntervalDropDown, autoSaveSeconds);
@@ -225,6 +246,102 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 			{
 				nameTextfield.YieldKeyboardFocus();
 				return false;
+			};
+		}
+
+		// Browser build only. The desktop's Link Account sends the forum username and password to the forum, which a
+		// page cannot do (the forum allows no cross-origin requests) and which would put the password through our
+		// relay. Instead the game makes a key pair here, the player copies its public key and adds it in the forum's
+		// User Control Panel themselves, and Check asks the forum (through the relay) whether it knows the key.
+		// The chrome is the release's: the same rows, with the password field's place taken by buttons.
+		void InitBrowserForumAccount(Widget panel, LocalPlayerProfile localProfile, PlayerDatabase playerDatabase, LabelWidget statusLabel, ButtonWidget linkButton)
+		{
+			var usernameContainer = panel.Get("USERNAME_CONTAINER");
+			var passwordContainer = panel.Get("PASSWORD_CONTAINER");
+
+			bool Linked() => localProfile.State == LocalPlayerProfile.LinkState.Linked;
+			bool Busy() => localProfile.State is LocalPlayerProfile.LinkState.Linking or LocalPlayerProfile.LinkState.CheckingLink;
+			bool HasKey() => localProfile.BrowserPublicKey != null;
+
+			// The result of the player's last action, until the next one.
+			string message = null;
+
+			ButtonWidget AddButton(Widget container, Widget field, string id, string text)
+			{
+				var button = linkButton.Clone();
+				button.Id = id;
+				button.Bounds = field.Bounds;
+				button.GetText = () => text;
+				container.AddChild(button);
+				return button;
+			}
+
+			// The username field shows the linked account, as on desktop. The password field is never used here.
+			profileUsernameTextfield.IsVisible = Linked;
+			profilePasswordTextfield.IsVisible = () => false;
+			passwordContainer.IsVisible = () => !Linked();
+
+			var usernameLabel = usernameContainer.Children.OfType<LabelWidget>().FirstOrDefault();
+			if (usernameLabel != null)
+			{
+				var desktopText = usernameLabel.GetText;
+				usernameLabel.GetText = () => Linked() ? desktopText() : BrowserKeyLabel;
+			}
+
+			var passwordLabel = passwordContainer.Children.OfType<LabelWidget>().FirstOrDefault();
+			if (passwordLabel != null)
+				passwordLabel.GetText = () => BrowserForumLabel;
+
+			var copyButton = AddButton(usernameContainer, profileUsernameTextfield, "COPY_KEY_BUTTON", BrowserCopyKey);
+			copyButton.IsVisible = () => !Linked();
+			copyButton.IsDisabled = () => Busy() || !HasKey();
+			copyButton.OnClick = () =>
+			{
+				var key = localProfile.BrowserPublicKey;
+				if (key == null || Game.BrowserCopyText == null)
+					return;
+
+				Game.BrowserCopyText(key).ContinueWith(t =>
+				{
+					var copied = t.IsCompletedSuccessfully && t.Result;
+					Game.RunAfterTick(() => message = copied ? BrowserKeyCopied : BrowserCopyFailed);
+				});
+			};
+
+			var openButton = AddButton(passwordContainer, profilePasswordTextfield, "OPEN_FORUM_BUTTON", BrowserOpenForum);
+			openButton.IsDisabled = Busy;
+			openButton.OnClick = () => Game.Renderer.TryOpenUrl(playerDatabase.Forum + BrowserForumAddKeyPage);
+
+			var desktopStatus = statusLabel.GetText;
+			statusLabel.GetText = () =>
+			{
+				if (Linked())
+					return desktopStatus();
+
+				if (localProfile.State == LocalPlayerProfile.LinkState.Linking)
+					return BrowserCreatingKey;
+
+				if (message != null)
+					return message;
+
+				if (!HasKey())
+					return BrowserNoKey;
+
+				return localProfile.BrowserKeyUnknown ? BrowserKeyNotOnForum : BrowserAddKey;
+			};
+
+			var unlinkLabel = FluentProvider.GetMessage(ButtonForumProfileUnlink);
+			linkButton.GetText = () => Linked() ? unlinkLabel : HasKey() ? BrowserCheckKey : BrowserCreateKey;
+			linkButton.IsDisabled = Busy;
+			linkButton.OnClick = () =>
+			{
+				message = null;
+				if (Linked())
+					localProfile.DeleteKeypair();
+				else if (localProfile.BrowserHasUnregisteredKey)
+					localProfile.BrowserCheckKey();
+				else if (localProfile.State == LocalPlayerProfile.LinkState.Unlinked)
+					localProfile.BrowserCreateKey(created => Game.RunAfterTick(() => message = created ? null : BrowserCreateKeyFailed));
 			};
 		}
 

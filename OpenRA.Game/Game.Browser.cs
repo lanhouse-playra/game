@@ -11,6 +11,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Threading.Tasks;
 using OpenRA.Network;
 using OpenRA.Widgets;
 
@@ -101,6 +102,12 @@ namespace OpenRA
 		/// (settings.yaml included) is saved in the browser's storage. "Restart Now" in the settings calls it.
 		/// </summary>
 		public static Action BrowserRestart;
+
+		/// <summary>
+		/// Set by the browser host: puts text on the system clipboard (the forum key, in the settings). True once
+		/// it is there. Must be called from a click: browsers only allow it during a user gesture.
+		/// </summary>
+		public static Func<string, Task<bool>> BrowserCopyText;
 
 		/// <summary>How many UI actions failed and sent the player back to the main menu (diagnostics).</summary>
 		public static int BrowserUiActionsFailed { get; private set; }

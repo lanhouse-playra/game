@@ -930,9 +930,13 @@ async function main() {
 	let transport = null;
 	const net = createNetModule(() => transport);
 	setModuleImports('webra-net', net);
-	// The engine shows errors it recovered from (a UI action that failed) as a notice, and asks for a
-	// restart ("Restart Now" in its settings) through restart().
-	setModuleImports('webra-page', { notify: text => notify(text, true), restart: () => restart() });
+	// The engine shows errors it recovered from (a UI action that failed) as a notice, asks for a
+	// restart ("Restart Now" in its settings) through restart() and copies the forum key with copyText().
+	setModuleImports('webra-page', {
+		notify: text => notify(text, true),
+		restart: () => restart(),
+		copyText: text => page.copyText(text, canvas),
+	});
 	page.guardLeaving(() => net.openCount() > 0 && WebRA.phase !== 'exited');
 
 	setPhase('staging', 'Installing');
