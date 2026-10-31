@@ -47,20 +47,22 @@ separate fork. Please report problems with the browser version here, not to the 
 - **Saved data.** Settings, replays, downloaded maps and screenshots are kept in the browser's IndexedDB and survive
   reloads; replays and screenshots are also saved to the browser's Downloads.
 
-## Branches
+## Branches and tags
 
-| Branch | What it is |
+`playra-main` is the only branch: it is what runs on play.ra.lanhouse.app. The work was done in phases, each reviewed
+on its own; each phase is kept as a tag:
+
+| Tag | Phase |
 |---|---|
-| `playra-main` | what runs on play.ra.lanhouse.app: `playra-release` plus the Lanhouse hosting target (start screen, page title, game content from its own site, object storage behind a CDN), the browser settings pass and the first-visit download size |
-| `playra-release` | the release candidate: the branches below, merged |
-| `playra-proxyip` | `Server.TrustedProxies`: real client addresses from trusted relays with the PROXY protocol |
-| `playra-perf` | in-match performance (frame pacing, GL shim, maps downloaded after the menu); no simulation change |
-| `playra-play` | a link that installs and remembers: content install, saved settings and replays, packaging for hosting |
-| `playra-net` | multiplayer: game connections through the WebSocket relay, ticking in hidden tabs |
-| `playra-boot` | the first phase: OpenRA booting in the browser, reproducible official builds, pinned toolchain, conformance corpus |
+| `playra-phase-0-boot` | OpenRA booting in the browser, reproducible official builds, pinned toolchain, conformance corpus |
+| `playra-phase-1-net` | multiplayer: game connections through the WebSocket relay, ticking in hidden tabs |
+| `playra-phase-2-perf` | in-match performance (frame pacing, GL shim, maps downloaded after the menu); no simulation change |
+| `playra-phase-3-play` | a link that installs and remembers: content install, saved settings and replays, packaging for hosting |
+| `playra-trusted-proxies` | `Server.TrustedProxies`: real client addresses from trusted relays with the PROXY protocol |
+| `playra-release-candidate` | the phases merged: the first release candidate |
 
-Each branch builds on the ones below it (`playra-release` merges `playra-perf` and `playra-proxyip`); `playra-main`
-contains all of them.
+After the release candidate, `playra-main` added the Lanhouse hosting target (start screen, page title, game content
+from its own site), the browser settings pass and the downloads of replays and screenshots.
 
 ## Building
 
