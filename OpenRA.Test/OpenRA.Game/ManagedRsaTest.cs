@@ -10,6 +10,7 @@
 #endregion
 
 using System;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -34,6 +35,26 @@ namespace OpenRA.Test
 		{
 			using (var rsa = new RSACryptoServiceProvider(2048))
 				return rsa.ExportParameters(true);
+		}
+
+		static BigInteger B(byte[] value) => new(value, isUnsigned: true, isBigEndian: true);
+
+		// The same value with its lowest bit flipped.
+		static byte[] Tampered(byte[] value)
+		{
+			var tampered = (byte[])value.Clone();
+			tampered[^1] ^= 1;
+			return tampered;
+		}
+
+		// The first prime from start up that the key generator could use (p - 1 not a multiple of e).
+		static BigInteger NextKeyPrime(BigInteger start)
+		{
+			var c = start | BigInteger.One;
+			while (!ManagedRsa.IsProbablePrime(c) || (c % ManagedRsa.PublicExponent).IsOne)
+				c += 2;
+
+			return c;
 		}
 
 		static byte[] RandomInput(Random random)
@@ -150,7 +171,6 @@ namespace OpenRA.Test
 				foreach (var half in new[] { key.P, key.Q, key.DP, key.DQ, key.InverseQ })
 					Assert.That(half, Has.Length.EqualTo(128));
 
-				static BigInteger B(byte[] v) => new(v, isUnsigned: true, isBigEndian: true);
 				var n = B(key.Modulus);
 				var p = B(key.P);
 				var q = B(key.Q);
@@ -175,6 +195,105 @@ namespace OpenRA.Test
 			}
 
 			Assert.That(ManagedKeys.Value.Select(k => Convert.ToBase64String(k.Modulus)).Distinct().Count(), Is.EqualTo(ManagedKeys.Value.Length));
+		}
+
+		[Test]
+		public void ClosePrimesAreRejected()
+		{
+			// FIPS 186-5 A.1.3 asks for |p - q| > 2^(nlen/2 - 100): Fermat's method factors n at once when p and q are
+			// close. A key is made only from primes that are far enough apart.
+			var key = ManagedKeys.Value[0];
+			var p = B(key.P);
+			var same = ManagedRsa.KeyGenerator.FromPrimes(2048, p, B(key.Q));
+			Assert.That(same, Is.Not.Null);
+			Assert.That(ManagedRsa.ToXmlString(same.Value, true), Is.EqualTo(ManagedRsa.ToXmlString(key, true)));
+
+			Assert.That(ManagedRsa.KeyGenerator.FromPrimes(2048, p, NextKeyPrime(p + 2)), Is.Null);
+			Assert.That(ManagedRsa.KeyGenerator.FromPrimes(2048, p, NextKeyPrime(p + (BigInteger.One << 923))), Is.Null);
+			Assert.That(ManagedRsa.KeyGenerator.FromPrimes(2048, p, NextKeyPrime(p + (BigInteger.One << 924))), Is.Not.Null);
+		}
+
+		[Test]
+		public void PrimeTestRejectsPseudoprimes()
+		{
+			// Strong pseudoprimes to the smallest bases: 2047 to base 2, 3215031751 to 2, 3, 5 and 7, 3825123056546413051 to
+			// the primes up to 23, 318665857834031151167461 to the primes up to 37. Carmichael numbers, a product of two
+			// Mersenne primes. A test with fixed small bases accepts some of them; random bases reject them all.
+			var composites = new[]
+			{
+				2047, 3215031751, 3825123056546413051, BigInteger.Parse("318665857834031151167461", CultureInfo.InvariantCulture),
+				561, 1105, 1729, 2465, 15841, ((BigInteger.One << 61) - 1) * ((BigInteger.One << 89) - 1),
+			};
+
+			foreach (var n in composites)
+				for (var i = 0; i < 20; i++)
+					Assert.That(ManagedRsa.IsProbablePrime(n), Is.False, $"{n} is composite");
+
+			// One round lets a composite through with a probability of up to 1/4, so the number of rounds matters. These
+			// pass a single round about 2.5%, 2.8% and 5.1% of the time: one round would let some of the 6000 tests through
+			// for certain, while the key generator's rounds let one through with a probability of about 10^-7.
+			var accepted = 0;
+			foreach (var n in new BigInteger[] { 1105, 2465, 15841 })
+				for (var i = 0; i < 2000; i++)
+					if (ManagedRsa.IsProbablePrime(n))
+						accepted++;
+
+			Assert.That(accepted, Is.Zero, "composites accepted");
+
+			var primes = new[]
+			{
+				2, 3, 5, 7, 65537, (BigInteger.One << 61) - 1, (BigInteger.One << 127) - 1, (BigInteger.One << 521) - 1,
+				B(ManagedKeys.Value[0].P), B(ManagedKeys.Value[0].Q),
+			};
+
+			foreach (var n in primes)
+				Assert.That(ManagedRsa.IsProbablePrime(n), Is.True, $"{n} is prime");
+
+			Assert.That(ManagedRsa.IsProbablePrime(1), Is.False);
+			Assert.That(ManagedRsa.IsProbablePrime(4), Is.False);
+		}
+
+		[Test]
+		public void FaultySignaturesAreNeverReturned()
+		{
+			// A signature made with a wrong CRT parameter is right modulo one prime and wrong modulo the other, so
+			// gcd(s^e - m, n) gives away a factor of n (Boneh-DeMillo-Lipton). Signing must throw instead.
+			var key = ManagedKeys.Value[0];
+			var data = Encoding.UTF8.GetBytes("token");
+			var faulty = new[]
+			{
+				key with { DP = Tampered(key.DP) },
+				key with { DQ = Tampered(key.DQ) },
+				key with { InverseQ = Tampered(key.InverseQ) },
+			};
+
+			foreach (var k in faulty)
+				Assert.Throws<CryptographicException>(() => ManagedRsa.SignSha1(k, data));
+
+			Assert.That(ManagedRsa.VerifySha1(key, data, ManagedRsa.SignSha1(key, data)), Is.True);
+		}
+
+		[Test]
+		public void PrivateOperationIsBlinded()
+		{
+			// Blinding cannot be seen in a correct result: (m * r^e)^d * r^-1 = m^d for every r. It shows with a wrong DP:
+			// the result modulo p is then (m * r^e)^dp' * r^-1 = m^dp' * r^(e * dp' - 1), which changes with r, where an
+			// unblinded exponentiation would give the same wrong value every time.
+			var key = ManagedKeys.Value[0];
+			var n = B(key.Modulus);
+			var e = B(key.Exponent);
+			var input = new byte[255];
+			new Random(5).NextBytes(input);
+			var m = B(input);
+
+			var s = ManagedRsa.PrivateOperation(key, n, e, m);
+			Assert.That(BigInteger.ModPow(s, e, n), Is.EqualTo(m));
+			Assert.That(ManagedRsa.PrivateOperation(key, n, e, m), Is.EqualTo(s));
+
+			var faulty = key with { DP = Tampered(key.DP) };
+			var first = ManagedRsa.PrivateOperation(faulty, n, e, m);
+			Assert.That(first, Is.Not.EqualTo(s));
+			Assert.That(ManagedRsa.PrivateOperation(faulty, n, e, m), Is.Not.EqualTo(first));
 		}
 
 		[Test]

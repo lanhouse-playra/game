@@ -12,8 +12,13 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
+
+// The tests check the countermeasures that do not change any output (blinding, the prime test, the
+// distance between p and q) through the internal methods below.
+[assembly: InternalsVisibleTo("OpenRA.Test")]
 
 namespace OpenRA
 {
@@ -116,6 +121,34 @@ namespace OpenRA
 			return t0.Sign < 0 ? t0 + m : t0;
 		}
 
+		// n - 1 = d * 2^s with d odd.
+		static (BigInteger D, int S) SplitPowerOfTwo(BigInteger n)
+		{
+			var d = n - 1;
+			var s = 0;
+			while (d.IsEven)
+			{
+				d >>= 1;
+				s++;
+			}
+
+			return (d, s);
+		}
+
+		/// <summary>The Miller-Rabin test that the key generator applies to its candidates (random bases).</summary>
+		internal static bool IsProbablePrime(BigInteger n)
+		{
+			if (n < 5 || n.IsEven)
+				return n == 2 || n == 3;
+
+			var (d, s) = SplitPowerOfTwo(n);
+			for (var i = 0; i < MillerRabinRounds; i++)
+				if (!MillerRabinRound(n, d, s))
+					return false;
+
+			return true;
+		}
+
 		/// <summary>One Miller-Rabin round with a random base: false means n is certainly composite.</summary>
 		static bool MillerRabinRound(BigInteger n, BigInteger d, int s)
 		{
@@ -201,16 +234,14 @@ namespace OpenRA
 					p = candidate;
 
 					// Look for q from a new random start: the rest of this batch lies within 2^13 of p, much
-					// closer than TryFinish accepts.
+					// closer than FromPrimes accepts.
 					next = BatchSize;
 					return false;
 				}
 
-				if (TryFinish(p, candidate))
-					return true;
-
-				// Too close to p (or the modulus came out a bit short): look for another q.
-				return false;
+				// No key if q is too close to p (or the modulus came out a bit short): then look for another q.
+				result = FromPrimes(bits, p, candidate);
+				return result != null;
 			}
 
 			// Takes the next candidate that survives trial division, starting a new batch when this one is used up.
@@ -232,14 +263,7 @@ namespace OpenRA
 					return;
 
 				candidate = c;
-				candidateD = c - 1;
-				candidateS = 0;
-				while (candidateD.IsEven)
-				{
-					candidateD >>= 1;
-					candidateS++;
-				}
-
+				(candidateD, candidateS) = SplitPowerOfTwo(c);
 				roundsPassed = 0;
 			}
 
@@ -260,16 +284,21 @@ namespace OpenRA
 				next = 0;
 			}
 
-			bool TryFinish(BigInteger p, BigInteger q)
+			/// <summary>
+			/// The bits-bit key with primes p and q (e = 65537), or null if FIPS 186-5 rules the pair out.
+			/// </summary>
+			internal static RSAParameters? FromPrimes(int bits, BigInteger p, BigInteger q)
 			{
-				// FIPS 186-5 A.1.3: |p - q| > 2^(nlen/2 - 100).
+				// FIPS 186-5 A.1.3: |p - q| > 2^(nlen/2 - 100). Closer primes are found from n by Fermat's method.
+				var primeBits = bits / 2;
 				if (BigInteger.Abs(p - q).GetBitLength() <= primeBits - 100)
-					return false;
+					return null;
 
 				var n = p * q;
 				if (n.GetBitLength() != bits)
-					return false;
+					return null;
 
+				var e = new BigInteger(PublicExponent);
 				var pMinusOne = p - 1;
 				var qMinusOne = q - 1;
 				var lambda = pMinusOne / BigInteger.GreatestCommonDivisor(pMinusOne, qMinusOne) * qMinusOne;
@@ -277,7 +306,7 @@ namespace OpenRA
 
 				// FIPS 186-5 A.1.1: d > 2^(nlen/2). Practically always true; retry if not.
 				if (d.GetBitLength() <= primeBits)
-					return false;
+					return null;
 
 				var modulusLength = bits / 8;
 				var halfLength = modulusLength / 2;
@@ -298,8 +327,7 @@ namespace OpenRA
 				if (!VerifySha1(parameters, probe, SignSha1(parameters, probe)))
 					throw new CryptographicException("The generated key failed its self-test.");
 
-				result = parameters;
-				return true;
+				return parameters;
 			}
 		}
 
@@ -352,7 +380,7 @@ namespace OpenRA
 
 		// m^d mod n with the CRT, blinded: the exponentiations see m * r^e for a fresh random r, so how long
 		// they take says nothing about m (BigInteger.ModPow is not constant-time).
-		static BigInteger PrivateOperation(RSAParameters key, BigInteger n, BigInteger e, BigInteger m)
+		internal static BigInteger PrivateOperation(RSAParameters key, BigInteger n, BigInteger e, BigInteger m)
 		{
 			BigInteger r, rInverse;
 			while (true)
