@@ -46,23 +46,18 @@ separate fork. Please report problems with the browser version here, not to the 
   community mirrors.
 - **Saved data.** Settings, replays, downloaded maps and screenshots are kept in the browser's IndexedDB and survive
   reloads; replays and screenshots are also saved to the browser's Downloads.
+- **Forum account.** Settings > OpenRA Forum Account links the player's forum account as on desktop, without the
+  page ever seeing the forum password: Create Key makes the player's RSA key in the page (the same `player.oraid` file
+  and format as desktop), Copy Key puts its public key on the clipboard, Open Forum opens the forum's "Add key" page,
+  where the player logs in and pastes it, and Check asks the forum, through the relay, whether it knows the key. A
+  linked profile shows its name and badges, and servers that require an account accept the player. Signing the
+  server's authentication token is done in managed code (`OpenRA.Game/ManagedRsa.cs`), because .NET's RSA is not
+  available on browser-wasm and the handshake needs the signature synchronously.
 
-## Branches and tags
+## Branch
 
-`playra-main` is the only branch: it is what runs on play.ra.lanhouse.app. The work was done in phases, each reviewed
-on its own; each phase is kept as a tag:
-
-| Tag | Phase |
-|---|---|
-| `playra-phase-0-boot` | OpenRA booting in the browser, reproducible official builds, pinned toolchain, conformance corpus |
-| `playra-phase-1-net` | multiplayer: game connections through the WebSocket relay, ticking in hidden tabs |
-| `playra-phase-2-perf` | in-match performance (frame pacing, GL shim, maps downloaded after the menu); no simulation change |
-| `playra-phase-3-play` | a link that installs and remembers: content install, saved settings and replays, packaging for hosting |
-| `playra-trusted-proxies` | `Server.TrustedProxies`: real client addresses from trusted relays with the PROXY protocol |
-| `playra-release-candidate` | the phases merged: the first release candidate |
-
-After the release candidate, `playra-main` added the Lanhouse hosting target (start screen, page title, game content
-from its own site), the browser settings pass and the downloads of replays and screenshots.
+`main` is the only branch: it is what runs on play.ra.lanhouse.app. Each build's start screen links to the exact
+commit it was built from.
 
 ## Building
 
@@ -79,7 +74,7 @@ on the first run and verified.
 
 ```sh
 PLAYRA_TARGET=lanhouse PLAYRA_AOT=1 ./build-web.sh   # the build that runs on play.ra.lanhouse.app
-./build-web.sh serve                               # serve OpenRA.Web/dist/ on http://127.0.0.1:8090/
+./build-web.sh serve                                 # serve OpenRA.Web/dist/ on http://127.0.0.1:8090/
 ```
 
 An official build (the default) needs a clean git checkout based on the tag `playtest-20261026` and compiles a
@@ -93,7 +88,6 @@ around 20 minutes.
 
 - Local games: skirmish, missions and creating a server (a browser cannot host one). Join a server from Multiplayer.
 - The map editor.
-- Linking an OpenRA forum account.
 - Some display and system options: video mode, window size, VSync, display selection, lock mouse to window,
   UPnP/NAT-PMP, Discord Rich Presence, disc detection, auto-save. They are shown disabled with "Not available in the
   browser version".
