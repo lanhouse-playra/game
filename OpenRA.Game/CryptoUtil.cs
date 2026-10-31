@@ -207,6 +207,10 @@ namespace OpenRA
 		{
 			try
 			{
+				// System.Security.Cryptography.RSA is not supported in the browser: same signature, in managed code.
+				if (OperatingSystem.IsBrowser())
+					return Convert.ToBase64String(ManagedRsa.SignSha1(parameters, data));
+
 				using (var rsa = new RSACryptoServiceProvider())
 				{
 					rsa.ImportParameters(parameters);
