@@ -11,6 +11,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -32,7 +33,7 @@ namespace OpenRA.Web.Conformance
 	/// </summary>
 	public static class ConformanceCorpus
 	{
-		public const string Version = "1";
+		public const string Version = "2";
 
 		// Every branch of a double-to-integer conversion: in range, fractions, both signs, the edges of
 		// byte/short/int/long, beyond them, infinities, NaNs (quiet, negative, signaling), denormals.
@@ -205,6 +206,62 @@ namespace OpenRA.Web.Conformance
 			return values.ToArray();
 		}
 
+		// A fixed key, used only by these vectors, and its RSASSA-PKCS1-v1_5 SHA-1 signatures as OpenSSL makes them: the
+		// browser build signs with ManagedRsa (System.Security.Cryptography.RSA is not supported on browser-wasm), and its
+		// signatures must be the same bytes. OpenRA.Test checks the same vectors on desktop (ManagedRsaTest).
+		const string RsaTestKey =
+			"<RSAKeyValue>" +
+			"<Modulus>" +
+				"2MHYk5VXtbB9qaV+sduSrvmx2UJfvAeoMWYDQoS8rX0UvR4bPY2lotdSB35qs2X80weDMR8oLUgZYW0Vxoq3php8P/3HA8bk" +
+				"60VEdUNChhKFXY/qtGVnhZlmvWV3rRHoBk7pNKb2nNA0GU5kFxFKyFwsZJaxdApRAqgFJmcvlAQa0o6GtL9IwMvfvJOGr8gm" +
+				"waEwZPSo+MeZU3bJbLvwW+DI51nVx77IPezzGbVQhYn6sL8zo4tpxi3emsOHyQegZ5fgkxn8Sc356JKwej+rl4YxuVMD7fg2" +
+				"BBF1QtMzh6yS2COVgheQLzVxPTRD+H/l1Y57NNr2uncndStREJBoMQ==" +
+			"</Modulus>" +
+			"<Exponent>" +
+				"AQAB" +
+			"</Exponent>" +
+			"<P>" +
+				"//zxqWRBOxiVBnfkRNt41YBKHs/ZyYXAjjMILGJ9xjHDGdY808ssixld6Jy91htJVVOlKyDBOJ1ODDGNhT1BjoMIGRL1nvps" +
+				"e0xPmvn//XjmirczsWhHDAO+a3jaY1YCZEDKqxcYIBzFy2qurggScUPxuqxM2ymwRXraG7qkQOU=" +
+			"</P>" +
+			"<Q>" +
+				"2MRvBPZWoZSgAdCvYv0dBsZAMQgEEfcKH/2KwQJEvbA0oybrtbecWAaY6fOZKGvSv45zL6sm8Nzou4c4gJEm2Rq2s67fLKUO" +
+				"q2HzTu67xVBjP03XCEuPyxNurfRr5Z7mbCxYt4zrsGWpG3A6W+OwuIE1I0DK/T9kg6WnbnYFMV0=" +
+			"</Q>" +
+			"<DP>" +
+				"qmNM33kxygoUt5d5wzNqfIHF1Dh5OB/lCUGCgTiViyR4PmxRVI/5+CRMU5Zw7WCAMWFZoRlOQ0bBOnCJSFR7nEYvT7FE+Cqr" +
+				"pm4m1nrtH2Qn39ENgVptX9vmFVb91fzb3qsZu0PF9SnxpfI+juwkimu1LJGfHonjIHwjTS2wQtk=" +
+			"</DP>" +
+			"<DQ>" +
+				"1bYNEqJf1Nw4SLHbSMftpzEsNmsFwESEKfgJpbK73RxtOPF1cGn+7VZLylRNiumLFSq3a6bdNJlHpyNw1GjHGULaIBrnkxeE" +
+				"d/mRLR/35lgUEWSH/Xip4vhcpYqWGgPof3vVV9nKwNXpvNCP6Op5394bao9F0hp+2cAna6NWCU0=" +
+			"</DQ>" +
+			"<InverseQ>" +
+				"XfCoDWyDGO+K7oktDmK/EfDmgxDQ5zy8ZnohqiIbPzRNMsGWplyyMZNF6b8vT05CrRNVZ0Ol6eCYnTS6/0GCpZxnI3sgkdFl" +
+				"paNxFryIu8428iEe95gO48LuM+WXp8LCwDnilVNLlxk5p/Qvc1nE0x7kk2sG3oKfQA161cRMKzQ=" +
+			"</InverseQ>" +
+			"<D>" +
+				"BN8uf/quUv4ZhPOcSmEWBerEzY5JWo+Nfza8wgT7vKaADdQcZqDFZUiTpml3+npDWXbkwvjhTUs+jssF30WE5S3ZNxL8IyCY" +
+				"SpVu+Xe+igbminjOnKlez0joXz9lljU90s55PV63UkT3ts3lQAN6e9BeixA8AtCsi3O9UeSl1BzM4Vf3cedK7ZHJW+kXWBzg" +
+				"Qa389A7cJXpEyq72ZhN8Fa1gQC5FeZNRSAAdMRk2nJJZxPBJFWes7Ugrcn7hKgHkI91GLcDxXBKqfrgGTYT6eZAwAIRTbsUL" +
+				"PiXPzpfxOcU+nGsPuaAWAcsglx77ugeP7op1pYRELS4Z0qtSNfwZ8Q==" +
+			"</D>" +
+			"</RSAKeyValue>";
+
+		static readonly (string Name, string Data, string Signature)[] RsaVectors =
+		[
+			("empty", "",
+				"OAm0RIZdgjYMNNXSRmm1bPaD34OoJ0LAQJVNN2jQn/ozE64YLfFTeNvWqpLs8TwrTt+c6YAMTX+m8LjYrFnWEFRRVU5KBF7z" +
+				"M91XQxvr3SqEo+DksBLJP8wJuNrTpm2YD9nSiFEsKnTMsRvkZEj4dQxJqV6PKyy466xdKXpXRyZHpf/8w3uJn7Gz96gw9+Gh" +
+				"cQVGiSKHJOAlRrJt8IfzLcD9DC61ax7sUI/jlE/twp0B6mxY1sKdvkaSFGxBxjGuz6Az70czMwGUu9U7QlG+Z4FT1qhRselw" +
+				"mYg3/g7cnLwqQY96DtWXofiChMeghWJ95V+mSH8abyFQBGLT1t77aA=="),
+			("text", "OpenRA known-answer test é✓",
+				"0i2pQTF2ljUzAFYj8yOxhY0C9z5BIZHkcuku24e5WU0hgSEWSeVqC4dTZUUAvUGHfR0AcIzCgt7EjM7NLeteF8G01DJjRtPz" +
+				"3ziSvvOXSOui2RTC+BfVRDCW2gDp0ClMPBtD2SGFJ/RZ3PWgL2Vkv3w/wveP03tSjsaZzhS25Qjo3JnjtdRrAFng0ZtrUeBz" +
+				"+UAvfprLNB2UZjDzQXYy9rHQ72kV97H8eDQksUESIfhMLpHcY65lQhEA7UB77LCD8/ICH92akTSIDdZ5G1z/LTcxgOZxdxJv" +
+				"O4rlmC0sJOGBeXedKvogrmNLtwYKFFCRT8mqaORO+ZRuqUNnF8X90g=="),
+		];
+
 		static readonly string[] SweepFunctions = ["sin", "cos", "tan", "asin", "acos", "atan", "exp", "log", "log10", "sqrt", "sinh", "cosh", "tanh"];
 
 		public static string Run()
@@ -223,6 +280,7 @@ namespace OpenRA.Web.Conformance
 			ClrMath(Line);
 			EngineMath(Line);
 			Lua(Line);
+			Crypto(Line);
 
 			return output.ToString();
 		}
@@ -318,6 +376,28 @@ namespace OpenRA.Web.Conformance
 
 			var random = new Random(12345);
 			line("clr.random", "Random(12345)", string.Join(",", Enumerable.Range(0, 8).Select(_ => random.Next(1000))) + " " + F(random.NextDouble()));
+		}
+
+		static void Crypto(Action<string, string, string> line)
+		{
+			var key = ManagedRsa.FromXmlString(RsaTestKey);
+			line("crypto.rsa", "fingerprint", CryptoUtil.PublicKeyFingerprint(key));
+			foreach (var (name, text, expected) in RsaVectors)
+			{
+				var data = Encoding.UTF8.GetBytes(text);
+				var signature = Convert.ToBase64String(ManagedRsa.SignSha1(key, data));
+				line("crypto.rsa", name + " signature", signature);
+				line("crypto.rsa", name + " known answer", signature == expected ? "same" : "DIFFERENT");
+				line("crypto.rsa", name + " verifies", ManagedRsa.VerifySha1(key, data, Convert.FromBase64String(expected)) ? "yes" : "no");
+			}
+
+			// How long a new player key takes on this runtime (random, so info only).
+			const int Keys = 4;
+			var stopwatch = Stopwatch.StartNew();
+			for (var i = 0; i < Keys; i++)
+				ManagedRsa.GenerateKey(2048);
+
+			line("info.crypto", "rsa key generation ms", Invariant($"{stopwatch.ElapsedMilliseconds / Keys}"));
 		}
 
 		static void EngineMath(Action<string, string, string> line)
