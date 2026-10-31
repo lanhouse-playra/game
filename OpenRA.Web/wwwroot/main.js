@@ -13,7 +13,7 @@
 // body[data-phase] for tests.
 
 import { dotnet } from './_framework/dotnet.js';
-import { Store, SupportSync, resetSavedData, retireDatabase } from './playra-store.js';
+import { Store, SupportSync, resetSavedData } from './playra-store.js';
 import { ensureContent, relayPackageUrl, sitePackageUrl } from './playra-content.js';
 import * as page from './playra-page.js';
 import { showSplash } from './playra-splash.js';
@@ -33,9 +33,6 @@ const at = path => new URL(path, BASE).href;
 // database of its own ("playra:/playra/"). data/build.json can name one ("storage"), e.g. to keep the
 // players' saved data when the path changes.
 const storageNameFor = build => build.storage || (BASE.pathname === '/' ? 'playra' : `playra:${BASE.pathname}`);
-// The name builds used before the project was renamed: retireDatabase() moves its saved files into the
-// current database and deletes it. A build that names its database keeps its name, so it has no old one.
-const legacyStorageNameFor = build => build.storage ? '' : (BASE.pathname === '/' ? 'webra' : `webra:${BASE.pathname}`);
 
 // Debug URL parameters (?arg=, ?mod=, ?rt=, ?env=, ?interp=, ?luatest=, ?proxy=) work only in dev
 // builds (build-web.sh PLAYRA_DEV=1, data/build.json "dev": true). On a hosted page a crafted link
@@ -871,10 +868,7 @@ async function main() {
 	page.clampMouseAtEdges(canvas, () => PlayRA.phase === 'running');
 
 	const proxy = relayUrl(build);
-	const storePromise = Store.open(storageName).then(async s => {
-		await retireDatabase(s, legacyStorageNameFor(build));
-		return s;
-	});
+	const storePromise = Store.open(storageName);
 	if (splash) {
 		PlayRA.splash = {};
 		const choice = await showSplash(splash, { build, at, storePromise, contentManifest, state: PlayRA.splash });
