@@ -44,8 +44,8 @@ async function inHttpCache(url) {
 	}
 }
 
-// True when this browser holds everything a first visit downloads before the main menu (build.json
-// firstVisit, tools/publish.py): every content-addressed file in the HTTP cache (of the ICU data shards,
+// True when this browser holds everything a first visit downloads, the maps package after the menu included
+// (build.json firstVisit, tools/publish.py): every content-addressed file in the HTTP cache (of the ICU data shards,
 // one) and the game content in IndexedDB. Anything missing (a new release, an evicted cache, storage cleared) counts as a first visit.
 export async function alreadyDownloaded(build, at, storePromise, contentManifest) {
 	const firstVisit = build.firstVisit;

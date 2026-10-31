@@ -21,9 +21,9 @@ usage:
       Checks that every object the manifest lists is there with the bytes it names, the game content
       packages included. Run it before an upload.
   publish.py first-visit <dist> [--encoding br|identity]
-      Adds "firstVisit" to the build's data/build.json: what a first visit downloads until the main menu
-      (see first_visit below). The page's start screen shows the size and checks the list against the
-      browser's cache. Run it after the brotli copies are made and before the manifest.
+      Adds "firstVisit" to the build's data/build.json: what a first visit downloads, up to the main menu and
+      the maps package right after it (see first_visit below). The page's start screen shows the size and
+      checks the list against the browser's cache. Run it after the brotli copies are made and before the manifest.
 
 The manifest is all an uploader needs; it never decides a header itself:
 
@@ -331,11 +331,11 @@ def framework_first_visit(resources):
 
 
 def first_visit(dist, encoding):
-    """What a first visit transfers until the main menu, in the bytes the publish uploads (the brotli copies
-    with --encoding br): the page and its modules, the icon the page links first, build.json, the content
-    manifest, the .NET runtime and assemblies, the engine data and the game content (a local test bundle,
-    or the packages of the content plan, downloaded from our site or through the relay). Not counted: the
-    maps package, which comes after the menu, and HTTP headers. "cached" lists the content-addressed files
+    """What a first visit transfers, in the bytes the publish uploads (the brotli copies with --encoding br):
+    the page and its modules, the icon the page links first, build.json, the content manifest, the .NET
+    runtime and assemblies, the engine data and the game content (a local test bundle, or the packages of
+    the content plan, downloaded from our site or through the relay), and the maps package, which the page
+    downloads right after the main menu is up. Not counted: HTTP headers. "cached" lists the content-addressed files
     among them, which a returning visit finds in the browser's HTTP cache (the game content is kept in
     IndexedDB instead, and found there). "cachedOneOf" lists the ICU shards: a returning visit has the one its
     language uses."""
@@ -347,6 +347,9 @@ def first_visit(dist, encoding):
     if not engine:
         fail("build.json names no engineData")
     keys += [f"{engine}.json", f"{engine}.bin"]
+    maps = build.get("mapData")
+    if maps:
+        keys += [f"{maps}.json", f"{maps}.bin"]
     if build.get("content"):
         keys += ["data/content.json", "data/content.bin"]
     framework, icu = framework_first_visit(framework_boot_config(dist))
@@ -432,7 +435,7 @@ def main():
         with open(path, "w") as f:
             json.dump(build, f, separators=(",", ":"))
             f.write("\n")
-        print(f"{path}: first visit {build['firstVisit']['bytes'] / 1e6:.1f} MB until the menu ({encoding}), "
+        print(f"{path}: first visit {build['firstVisit']['bytes'] / 1e6:.1f} MB with the maps ({encoding}), "
               f"{len(build['firstVisit']['cached'])} files found in the HTTP cache on a returning visit")
     elif len(args) == 4 and args[0] == "check":
         sys.exit(0 if check(*args[1:]) else 1)
