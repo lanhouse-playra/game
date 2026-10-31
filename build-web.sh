@@ -531,9 +531,9 @@ find "${DIST}" -type f \( -name '*.html' -o -name '*.js' -o -name '*.json' -o -n
 	! -name 'content.*' -print0 | sort -z | xargs -0 "${EMSDK_NODE}" "${SRC_WEB}/tools/brotli.mjs" > "${OBJ}/brotli.log"
 echo "brotli: $(grep -c '"kept"' "${OBJ}/brotli.log") checked, $(grep -vc '"kept"' "${OBJ}/brotli.log") written"
 
-# What a first visit downloads until the main menu, in the bytes the publish uploads (so after the brotli
-# copies), into build.json: the start screen shows the size, and checks the list against the browser's
-# cache (tools/publish.py first-visit). build.json changed, so its brotli copy is made again.
+# What a first visit downloads (up to the main menu, and the maps package right after it), in the bytes
+# the publish uploads (so after the brotli copies), into build.json: the start screen shows the size, and
+# checks the list against the browser's cache (tools/publish.py first-visit). build.json changed, so its brotli copy is made again.
 python3 -I "${SRC_WEB}/tools/publish.py" first-visit "${DIST}" --encoding "${WEBRA_PUBLISH_ENCODING:-br}"
 "${EMSDK_NODE}" "${SRC_WEB}/tools/brotli.mjs" "${DIST}/data/build.json" >> "${OBJ}/brotli.log"
 
