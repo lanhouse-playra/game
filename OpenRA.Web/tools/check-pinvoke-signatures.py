@@ -143,7 +143,7 @@ def compile_refs(emcc, cflags, headers, names, workdir):
     with open(source, "w") as f:
         for h in headers:
             f.write(f"#include {h}\n")
-        f.write("void *webra_pinvoke_refs[] = {\n")
+        f.write("void *playra_pinvoke_refs[] = {\n")
         for name in names:
             f.write(f"\t(void *)&{name},\n")
         f.write("};\n")

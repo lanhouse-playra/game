@@ -18,7 +18,7 @@ only the packages listed in it (mirror list host, exact package hashes).
 
 Each download also gets a "file" name, <mod>-<download id>.<sha1>.zip: the name under which a copy
 published on our own site is found (tools/fetch-content.py writes it; the page asks for it when the
-build has WEBRA_CONTENT_URL). The SHA1 in the name makes it content-addressed, so it can be cached as
+build has PLAYRA_CONTENT_URL). The SHA1 in the name makes it content-addressed, so it can be cached as
 immutable.
 """
 

@@ -47,7 +47,7 @@ MIRROR_LIST_HOSTS = {"www.openra.net"}
 MIRROR_HOSTS = {"openra.baxxster.no", "openra.ppmsite.com", "republic.community", "openra.0x47.net"}
 MAX_BYTES = 64 << 20
 TIMEOUT = 60
-USER_AGENT = "webra-fetch-content/1 (one-time copy for self-hosting)"
+USER_AGENT = "playra-fetch-content/1 (one-time copy for self-hosting)"
 
 
 def fail(message):

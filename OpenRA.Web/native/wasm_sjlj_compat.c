@@ -26,7 +26,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-struct webra_jmp_buf
+struct playra_jmp_buf
 {
 	void *func_invocation_id;
 	uint32_t label;
@@ -34,7 +34,7 @@ struct webra_jmp_buf
 
 void __wasm_setjmp(void *env, uint32_t label, void *func_invocation_id)
 {
-	struct webra_jmp_buf *jb = (struct webra_jmp_buf *)env;
+	struct playra_jmp_buf *jb = (struct playra_jmp_buf *)env;
 	if (label == 0 || func_invocation_id == NULL)
 		abort();
 
@@ -44,7 +44,7 @@ void __wasm_setjmp(void *env, uint32_t label, void *func_invocation_id)
 
 uint32_t __wasm_setjmp_test(void *env, void *func_invocation_id)
 {
-	struct webra_jmp_buf *jb = (struct webra_jmp_buf *)env;
+	struct playra_jmp_buf *jb = (struct playra_jmp_buf *)env;
 	if (jb->func_invocation_id == func_invocation_id)
 		return jb->label;
 

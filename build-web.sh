@@ -15,44 +15,44 @@
 #                       is listed in OpenRA.Web/upstream-patches.txt. It compiles and
 #                       packages a "git archive HEAD" export, never the working tree. The page ignores
 #                       debug URL parameters.
-#   dev (WEBRA_DEV=1)   Builds the working tree as it is and stamps {DEV_VERSION}, which no release
+#   dev (PLAYRA_DEV=1)   Builds the working tree as it is and stamps {DEV_VERSION}, which no release
 #                       server accepts. The page honours the debug URL parameters (?arg=, ?env=, ?rt=,
 #                       ?interp=, ?luatest=).
 #
 # Environment:
 #   CONFIGURATION       Release (default) or Debug
-#   WEBRA_DEV           1 for a dev build (see above)
-#   WEBRA_AOT           1 to build with Mono AOT (RunAOTCompilation), default 0
-#   WEBRA_AOT_SERIAL    true (default) compiles assemblies one at a time; parallel AOT needs > 6 GB
-#   WEBRA_MODS          mods to package (default: "ra")
-#   WEBRA_CONTENT_DIR   optional local directory with the mod content (e.g. .../Content/ra/v2).
+#   PLAYRA_DEV           1 for a dev build (see above)
+#   PLAYRA_AOT           1 to build with Mono AOT (RunAOTCompilation), default 0
+#   PLAYRA_AOT_SERIAL    true (default) compiles assemblies one at a time; parallel AOT needs > 6 GB
+#   PLAYRA_MODS          mods to package (default: "ra")
+#   PLAYRA_CONTENT_DIR   optional local directory with the mod content (e.g. .../Content/ra/v2).
 #                       It is packaged into dist/data for local testing only. Never publish it.
-#   WEBRA_EM_CACHE      emscripten cache (default: OpenRA.Web/obj/emcache)
-#   WEBRA_PROXY_URL     WebSocket-to-TCP relay the page uses for game connections, written to
+#   PLAYRA_EM_CACHE      emscripten cache (default: OpenRA.Web/obj/emcache)
+#   PLAYRA_RELAY_URL     WebSocket-to-TCP relay the page uses for game connections, written to
 #                       data/build.json: an absolute ws:// or wss:// URL, or a path resolved against the
 #                       page's own address (ws: for http pages, wss: for https). Default "ws", i.e. the
 #                       relay at <page directory>/ws on the same host (deploy/ kit). Dev builds also take ?proxy=
-#   WEBRA_CONTENT_RELAY Path of the relay's content route (official mirror downloads), default "content"
-#   WEBRA_CONTENT_URL   Where the page downloads the game content instead of the relay: a path on the page's
+#   PLAYRA_CONTENT_RELAY Path of the relay's content route (official mirror downloads), default "content"
+#   PLAYRA_CONTENT_URL   Where the page downloads the game content instead of the relay: a path on the page's
 #                       own site, relative to the build's directory (e.g. "content": <base>/content/
 #                       ra-quickinstall.<sha1>.zip). The files are not part of the build: tools/fetch-content.py
 #                       writes them once, verified, and the publish manifest lists them. Default: empty (relay)
-#   WEBRA_MASTER_RELAY  The relay's master server route (versioncheck, gamenews): a path, default "master",
+#   PLAYRA_MASTER_RELAY  The relay's master server route (versioncheck, gamenews): a path, default "master",
 #                       or an https:// URL on another host (the relay must allow the page's origin, -master-cors);
 #                       "none" leaves those requests going to master.openra.net (CORS-blocked)
-#   WEBRA_STORAGE_NAME  IndexedDB database name; default "webra" at the root of a site, "webra:<path>" under a path
-#   WEBRA_META_CSP      1 writes the Content-Security-Policy into index.html as <meta http-equiv> too, for hosts
+#   PLAYRA_STORAGE_NAME  IndexedDB database name; default "playra" at the root of a site, "playra:<path>" under a path
+#   PLAYRA_META_CSP      1 writes the Content-Security-Policy into index.html as <meta http-equiv> too, for hosts
 #                       that cannot be relied on to send the header (object storage behind a CDN)
-#   WEBRA_PAGE_TITLE    the page's <title>, e.g. the site's name for a hosting target; default "OpenRA"
-#   WEBRA_SPLASH        a start screen, shown before the game starts: the name of OpenRA.Web/hosting/<name>-splash.html
+#   PLAYRA_PAGE_TITLE    the page's <title>, e.g. the site's name for a hosting target; default "OpenRA"
+#   PLAYRA_SPLASH        a start screen, shown before the game starts: the name of OpenRA.Web/hosting/<name>-splash.html
 #                       (markup put into index.html), with its logo OpenRA.Web/hosting/<name>-logo.svg or .png if
 #                       there is one. Default: none, the page starts the game at once
-#   WEBRA_SOURCE_URL    the repository the start screen's "source code" link points into, default
+#   PLAYRA_SOURCE_URL    the repository the start screen's "source code" link points into, default
 #                       https://github.com/lanhouse-playra/game: the link is <url>/tree/<commit>, the exact source of the build
-#   WEBRA_PUBLISH_ENCODING  br (default) or identity: the encoding of the publish manifest's objects
+#   PLAYRA_PUBLISH_ENCODING  br (default) or identity: the encoding of the publish manifest's objects
 #                       (OpenRA.Web/publish.json, tools/publish.py), for hosts without content negotiation
-#   WEBRA_TARGET        a hosting target: reads OpenRA.Web/hosting/<target>.env (these variables, for one
-#                       site; variables already set in the environment win), e.g. WEBRA_TARGET=lanhouse
+#   PLAYRA_TARGET        a hosting target: reads OpenRA.Web/hosting/<target>.env (these variables, for one
+#                       site; variables already set in the environment win), e.g. PLAYRA_TARGET=lanhouse
 #
 # Usage: ./build-web.sh            build dist/
 #        ./build-web.sh serve      serve dist/ on http://127.0.0.1:8090/
@@ -63,12 +63,12 @@ set -o nounset
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 WEB="${ROOT}/OpenRA.Web"
 DIST="${WEB}/dist"
-OBJ="${WEB}/obj/webra"
+OBJ="${WEB}/obj/playra"
 NATIVE="${OBJ}/native"
 DEPS="${OBJ}/deps"
 
 if [ "${1:-}" = "serve" ]; then
-	exec python3 -I "${WEB}/tools/serve.py" "${DIST}" "${WEBRA_PORT:-8090}"
+	exec python3 -I "${WEB}/tools/serve.py" "${DIST}" "${PLAYRA_PORT:-8090}"
 fi
 
 fail()
@@ -93,27 +93,27 @@ LUA_VERSION="5.1.5"
 LUA_SHA256="2640fc56a795f29d28ef15e13c34a47e223960b0240e8cb0a82d9b0738695333"
 
 CONFIGURATION="${CONFIGURATION:-Release}"
-WEBRA_DEV="${WEBRA_DEV:-0}"
-WEBRA_AOT="${WEBRA_AOT:-0}"
-WEBRA_MODS="${WEBRA_MODS:-ra}"
-WEBRA_EM_CACHE="${WEBRA_EM_CACHE:-${WEB}/obj/emcache}"
+PLAYRA_DEV="${PLAYRA_DEV:-0}"
+PLAYRA_AOT="${PLAYRA_AOT:-0}"
+PLAYRA_MODS="${PLAYRA_MODS:-ra}"
+PLAYRA_EM_CACHE="${PLAYRA_EM_CACHE:-${WEB}/obj/emcache}"
 
-[ -z "${WEBRA_VERSION:-}" ] || fail "WEBRA_VERSION is not supported: official builds stamp ${UPSTREAM_TAG}, dev builds (WEBRA_DEV=1) {DEV_VERSION}."
+[ -z "${PLAYRA_VERSION:-}" ] || fail "PLAYRA_VERSION is not supported: official builds stamp ${UPSTREAM_TAG}, dev builds (PLAYRA_DEV=1) {DEV_VERSION}."
 
-if [ -n "${WEBRA_TARGET:-}" ]; then
-	printf '%s' "${WEBRA_TARGET}" | grep -Eq '^[a-z0-9-]{1,32}$' || fail "WEBRA_TARGET must be a plain name: ${WEBRA_TARGET}"
-	TARGET_ENV="${WEB}/hosting/${WEBRA_TARGET}.env"
+if [ -n "${PLAYRA_TARGET:-}" ]; then
+	printf '%s' "${PLAYRA_TARGET}" | grep -Eq '^[a-z0-9-]{1,32}$' || fail "PLAYRA_TARGET must be a plain name: ${PLAYRA_TARGET}"
+	TARGET_ENV="${WEB}/hosting/${PLAYRA_TARGET}.env"
 	[ -f "${TARGET_ENV}" ] || fail "no hosting target ${TARGET_ENV}"
 	# KEY=value lines; a variable already set in the environment is kept.
 	while IFS= read -r line || [ -n "${line}" ]; do
 		case "${line}" in ''|'#'*) continue ;; esac
 		key="${line%%=*}"
 		value="${line#*=}"
-		printf '%s' "${key}" | grep -Eq '^WEBRA_[A-Z_]+$' || fail "${TARGET_ENV}: not a WEBRA_ variable: ${line}"
-		[ "${key}" != "WEBRA_TARGET" ] || fail "${TARGET_ENV}: cannot set WEBRA_TARGET"
+		printf '%s' "${key}" | grep -Eq '^PLAYRA_[A-Z_]+$' || fail "${TARGET_ENV}: not a PLAYRA_ variable: ${line}"
+		[ "${key}" != "PLAYRA_TARGET" ] || fail "${TARGET_ENV}: cannot set PLAYRA_TARGET"
 		if eval "[ -z \"\${${key}+set}\" ]"; then
 			export "${key}=${value}"
-			echo "${WEBRA_TARGET}: ${key}=${value}"
+			echo "${PLAYRA_TARGET}: ${key}=${value}"
 		fi
 	done < "${TARGET_ENV}"
 fi
@@ -122,15 +122,15 @@ mkdir -p "${OBJ}" "${NATIVE}" "${DEPS}"
 
 echo "== Sources"
 COMMIT="$(git -C "${ROOT}" rev-parse HEAD 2> /dev/null || echo unknown)"
-if [ "${WEBRA_DEV}" = "1" ]; then
+if [ "${PLAYRA_DEV}" = "1" ]; then
 	VERSION="{DEV_VERSION}"
 	SRC="${ROOT}"
 	[ -z "$(git -C "${ROOT}" status --porcelain 2> /dev/null)" ] || COMMIT="${COMMIT}-dirty"
 	echo "Dev build of the working tree (${COMMIT}), version ${VERSION}"
 else
-	git -C "${ROOT}" rev-parse --git-dir > /dev/null 2>&1 || fail "official builds need a git checkout (or use WEBRA_DEV=1)"
+	git -C "${ROOT}" rev-parse --git-dir > /dev/null 2>&1 || fail "official builds need a git checkout (or use PLAYRA_DEV=1)"
 	DIRTY="$(git -C "${ROOT}" status --porcelain --untracked-files=normal)"
-	[ -z "${DIRTY}" ] || fail "the working tree has uncommitted or untracked changes; an official build must match a commit (commit them, or use WEBRA_DEV=1):
+	[ -z "${DIRTY}" ] || fail "the working tree has uncommitted or untracked changes; an official build must match a commit (commit them, or use PLAYRA_DEV=1):
 ${DIRTY}"
 	git -C "${ROOT}" rev-parse -q --verify "refs/tags/${UPSTREAM_TAG}^{commit}" > /dev/null || fail "tag ${UPSTREAM_TAG} not found (git fetch --tags upstream)"
 	git -C "${ROOT}" merge-base --is-ancestor "${UPSTREAM_TAG}" HEAD || fail "HEAD is not based on ${UPSTREAM_TAG}"
@@ -182,7 +182,7 @@ done
 export DOTNET_EMSCRIPTEN_LLVM_ROOT="${EMSDK_TOOLS}/bin"
 export DOTNET_EMSCRIPTEN_BINARYEN_ROOT="${EMSDK_TOOLS}"
 export DOTNET_EMSCRIPTEN_NODE_JS="${EMSDK_NODE}"
-export EM_CACHE="${WEBRA_EM_CACHE}"
+export EM_CACHE="${PLAYRA_EM_CACHE}"
 export EM_FROZEN_CACHE=0
 # The workload's cache was generated on the build machine of the workload; skip the sanity check
 # that would otherwise wipe our (seeded) copy because of the different LLVM path.
@@ -209,9 +209,9 @@ fi
 NATIVE_CFLAGS="-O2 -fwasm-exceptions -sSUPPORT_LONGJMP=wasm"
 
 echo "== Lua ${LUA_VERSION}"
-# lua-5.1.5-webra.patch makes the wasm32 build behave like desktop x64 Lua: 64-bit lua_Integer,
+# lua-5.1.5-playra.patch makes the wasm32 build behave like desktop x64 Lua: 64-bit lua_Integer,
 # 64-bit string positions and string.format integers, 64-bit tonumber(s, base).
-LUA_PATCH="${SRC_WEB}/native/lua/lua-${LUA_VERSION}-webra.patch"
+LUA_PATCH="${SRC_WEB}/native/lua/lua-${LUA_VERSION}-playra.patch"
 LUA_STAMP="$( (cat "${LUA_PATCH}"; echo "${LUA_SHA256} ${NATIVE_CFLAGS} ${EMSCRIPTEN_VERSION}") | sha256sum | cut -d ' ' -f 1)"
 if [ ! -f "${NATIVE}/lua51.a" ] || [ "$(cat "${NATIVE}/lua51.stamp" 2> /dev/null)" != "${LUA_STAMP}" ]; then
 	LUA_TAR="${DEPS}/lua-${LUA_VERSION}.tar.gz"
@@ -233,12 +233,12 @@ fi
 
 echo "== Native glue"
 # -msimd128: the GL shim's BGRA conversion uses WebAssembly SIMD (the runtime is built with SIMD too).
-"${EMCC}" ${NATIVE_CFLAGS} -msimd128 -c "${SRC_WEB}/native/webra_gl.c" -o "${OBJ}/webra_gl.o"
+"${EMCC}" ${NATIVE_CFLAGS} -msimd128 -c "${SRC_WEB}/native/playra_gl.c" -o "${OBJ}/playra_gl.o"
 "${EMCC}" ${NATIVE_CFLAGS} -c "${SRC_WEB}/native/wasm_sjlj_compat.c" -o "${OBJ}/wasm_sjlj_compat.o"
-rm -f "${NATIVE}/webra.a"
-"${EMAR}" rcs "${NATIVE}/webra.a" "${OBJ}/webra_gl.o" "${OBJ}/wasm_sjlj_compat.o"
+rm -f "${NATIVE}/playra.a"
+"${EMAR}" rcs "${NATIVE}/playra.a" "${OBJ}/playra_gl.o" "${OBJ}/wasm_sjlj_compat.o"
 for module in SDL2 freetype6 soft_oal; do
-	"${EMCC}" ${NATIVE_CFLAGS} "-DWEBRA_STUB_SYMBOL=webra_module_stub_${module}" -c "${SRC_WEB}/native/module_stub.c" -o "${OBJ}/stub_${module}.o"
+	"${EMCC}" ${NATIVE_CFLAGS} "-DPLAYRA_STUB_SYMBOL=playra_module_stub_${module}" -c "${SRC_WEB}/native/module_stub.c" -o "${OBJ}/stub_${module}.o"
 	rm -f "${NATIVE}/${module}.a"
 	"${EMAR}" rcs "${NATIVE}/${module}.a" "${OBJ}/stub_${module}.o"
 done
@@ -262,7 +262,7 @@ if [ "$(git -C "${ELUANT_SRC}" rev-parse HEAD 2> /dev/null)" != "${ELUANT_COMMIT
 	git -C "${ELUANT_SRC}" checkout -q --detach FETCH_HEAD
 fi
 [ "$(git -C "${ELUANT_SRC}" rev-parse HEAD)" = "${ELUANT_COMMIT}" ] || fail "Eluant checkout is not ${ELUANT_COMMIT}"
-if [ "${WEBRA_DEV}" = "1" ] && [ -n "${WEBRA_KEEP_ELUANT_EDITS:-}" ]; then
+if [ "${PLAYRA_DEV}" = "1" ] && [ -n "${PLAYRA_KEEP_ELUANT_EDITS:-}" ]; then
 	echo "Keeping local Eluant edits (dev build)"
 else
 	git -C "${ELUANT_SRC}" checkout -q -- .
@@ -281,12 +281,12 @@ dotnet build "${ELUANT_SRC}/Eluant/Eluant.csproj" -c Release -nologo -v quiet -p
 echo "== Generated sources"
 python3 -I "${SRC_WEB}/tools/gen-gl-signatures.py" "${SRC}/OpenRA.Platforms.Default/OpenGL.cs" "${OBJ}/GLSignatures.g.cs"
 DEV_BOOL=false
-[ "${WEBRA_DEV}" = "1" ] && DEV_BOOL=true
-cat > "${OBJ}/WebraBuildInfo.g.cs" << EOF
+[ "${PLAYRA_DEV}" = "1" ] && DEV_BOOL=true
+cat > "${OBJ}/PlayraBuildInfo.g.cs" << EOF
 // Generated by build-web.sh.
 namespace OpenRA.Web
 {
-	static class WebraBuildInfo
+	static class PlayraBuildInfo
 	{
 		public const string Version = "${VERSION}";
 		public const string Commit = "${COMMIT}";
@@ -296,23 +296,23 @@ namespace OpenRA.Web
 }
 EOF
 
-echo "== dotnet publish (${CONFIGURATION}, AOT=${WEBRA_AOT})"
+echo "== dotnet publish (${CONFIGURATION}, AOT=${PLAYRA_AOT})"
 RUN_AOT=false
 LINK_OPT="-O2"
-if [ "${WEBRA_AOT}" = "1" ]; then
+if [ "${PLAYRA_AOT}" = "1" ]; then
 	RUN_AOT=true
 	# emcc's -O2 link step runs wasm-opt over the whole AOT module, which needs more than 6 GB.
-	LINK_OPT="${WEBRA_AOT_LINK_OPT:--O1}"
+	LINK_OPT="${PLAYRA_AOT_LINK_OPT:--O1}"
 fi
 PUBLISH="${SRC_WEB}/bin/${CONFIGURATION}/publish"
 rm -rf "${PUBLISH}"
 dotnet publish "${SRC_WEB}/OpenRA.Web.csproj" -c "${CONFIGURATION}" -nologo \
-	-p:WebraNativeDir="${NATIVE}/" \
-	-p:WebraEluantPath="${OBJ}/eluant/Eluant.dll" \
-	-p:WebraGeneratedDir="${OBJ}/" \
-	-p:WebraEmCache="${EM_CACHE}/" \
+	-p:PlayraNativeDir="${NATIVE}/" \
+	-p:PlayraEluantPath="${OBJ}/eluant/Eluant.dll" \
+	-p:PlayraGeneratedDir="${OBJ}/" \
+	-p:PlayraEmCache="${EM_CACHE}/" \
 	-p:RunAOTCompilation="${RUN_AOT}" \
-	-p:DisableParallelAot="${WEBRA_AOT_SERIAL:-true}" \
+	-p:DisableParallelAot="${PLAYRA_AOT_SERIAL:-true}" \
 	-p:EmccLinkOptimizationFlag="${LINK_OPT}" \
 	-p:PublishDir="${PUBLISH}/"
 
@@ -355,7 +355,7 @@ mkdir -p "${ENGINE_STAGE}/mods"
 # AUTHORS is the engine tab of Extras > Credits (ModCredits.EngineCreditsFile).
 cp -a "${SRC}/glsl" "${SRC}/global mix database.dat" "${SRC}/AUTHORS" "${ENGINE_STAGE}/"
 cp -a "${SRC}/mods/common" "${ENGINE_STAGE}/mods/"
-for mod in ${WEBRA_MODS}; do
+for mod in ${PLAYRA_MODS}; do
 	cp -a "${SRC}/mods/${mod}" "${ENGINE_STAGE}/mods/"
 	[ -d "${SRC}/mods/${mod}-content" ] && cp -a "${SRC}/mods/${mod}-content" "${ENGINE_STAGE}/mods/"
 done
@@ -371,7 +371,7 @@ done
 # first visit does not wait for them. Same paths in the browser's file system as before.
 MAPS_STAGE="${OBJ}/stage/maps"
 rm -rf "${MAPS_STAGE}"
-python3 -I "${SRC_WEB}/tools/split-maps.py" "${ENGINE_STAGE}" "${MAPS_STAGE}" ${WEBRA_MODS}
+python3 -I "${SRC_WEB}/tools/split-maps.py" "${ENGINE_STAGE}" "${MAPS_STAGE}" ${PLAYRA_MODS}
 python3 -I "${SRC_WEB}/tools/pack-data.py" "${ENGINE_STAGE}" /openra "${DIST}/data/engine"
 MAP_DATA=""
 if [ -d "${MAPS_STAGE}" ]; then
@@ -381,46 +381,46 @@ fi
 # The content manifest: what the page downloads (through the relay, from the official mirrors) and
 # installs on the first visit, read from the mod's own content installer definitions. The relay
 # serves only the packages in this file (deploy/ copies it next to the relay).
-FIRST_MOD="$(echo ${WEBRA_MODS} | cut -d ' ' -f 1)"
+FIRST_MOD="$(echo ${PLAYRA_MODS} | cut -d ' ' -f 1)"
 python3 -I "${SRC_WEB}/tools/content-manifest.py" "${ENGINE_STAGE}" "${FIRST_MOD}" "${DIST}/data/content-packages.json"
 
-if [ -n "${WEBRA_CONTENT_DIR:-}" ]; then
+if [ -n "${PLAYRA_CONTENT_DIR:-}" ]; then
 	# Local testing only: this is copyrighted (freeware) game content. Do not publish it.
 	# deploy/deploy.sh refuses a build that contains it.
-	echo "WARNING: packaging local game content from ${WEBRA_CONTENT_DIR}: this build must not be published" >&2
-	python3 -I "${SRC_WEB}/tools/pack-data.py" "${WEBRA_CONTENT_DIR}" /support/Content/ra/v2 "${DIST}/data/content"
+	echo "WARNING: packaging local game content from ${PLAYRA_CONTENT_DIR}: this build must not be published" >&2
+	python3 -I "${SRC_WEB}/tools/pack-data.py" "${PLAYRA_CONTENT_DIR}" /support/Content/ra/v2 "${DIST}/data/content"
 fi
 
-WEBRA_PROXY_URL="${WEBRA_PROXY_URL:-ws}"
-printf '%s' "${WEBRA_PROXY_URL}" | grep -Eq '^(wss?://[A-Za-z0-9.:/_~%-]+|[A-Za-z0-9._~/-]+)$' \
-	|| fail "WEBRA_PROXY_URL must be a plain ws:// or wss:// URL or a path, without query: ${WEBRA_PROXY_URL}"
+PLAYRA_RELAY_URL="${PLAYRA_RELAY_URL:-ws}"
+printf '%s' "${PLAYRA_RELAY_URL}" | grep -Eq '^(wss?://[A-Za-z0-9.:/_~%-]+|[A-Za-z0-9._~/-]+)$' \
+	|| fail "PLAYRA_RELAY_URL must be a plain ws:// or wss:// URL or a path, without query: ${PLAYRA_RELAY_URL}"
 # Official builds never send game traffic in clear text: wss://, or a path (the page resolves it to
 # wss: on an https page and refuses ws: off loopback), or ws:// to loopback for local tests.
-if [ "${WEBRA_DEV}" != "1" ]; then
-	printf '%s' "${WEBRA_PROXY_URL}" | grep -Eq '^(wss://|ws://(127\.0\.0\.1|localhost|\[::1\])[:/]|[A-Za-z0-9._~/-]+$)' \
-		|| fail "official builds need a wss:// relay (or a same-origin path); ws:// is only accepted for loopback: ${WEBRA_PROXY_URL}"
+if [ "${PLAYRA_DEV}" != "1" ]; then
+	printf '%s' "${PLAYRA_RELAY_URL}" | grep -Eq '^(wss://|ws://(127\.0\.0\.1|localhost|\[::1\])[:/]|[A-Za-z0-9._~/-]+$)' \
+		|| fail "official builds need a wss:// relay (or a same-origin path); ws:// is only accepted for loopback: ${PLAYRA_RELAY_URL}"
 fi
-WEBRA_CONTENT_RELAY="${WEBRA_CONTENT_RELAY:-content}"
-WEBRA_CONTENT_URL="${WEBRA_CONTENT_URL:-}"
-WEBRA_MASTER_RELAY="${WEBRA_MASTER_RELAY:-master}"
-[ "${WEBRA_MASTER_RELAY}" = "none" ] && WEBRA_MASTER_RELAY=""
+PLAYRA_CONTENT_RELAY="${PLAYRA_CONTENT_RELAY:-content}"
+PLAYRA_CONTENT_URL="${PLAYRA_CONTENT_URL:-}"
+PLAYRA_MASTER_RELAY="${PLAYRA_MASTER_RELAY:-master}"
+[ "${PLAYRA_MASTER_RELAY}" = "none" ] && PLAYRA_MASTER_RELAY=""
 # (printf of an empty value gives grep no line at all, which it reports as no match: empty values are checked apart.)
-for v in "${WEBRA_CONTENT_RELAY}" "${WEBRA_CONTENT_URL}"; do
+for v in "${PLAYRA_CONTENT_RELAY}" "${PLAYRA_CONTENT_URL}"; do
 	[ -z "${v}" ] || printf '%s' "${v}" | grep -Eq '^[A-Za-z0-9._~/-]*$' || fail "content paths must be plain paths on the page's own site: ${v}"
 done
 # The master route may live on the relay's own host (a cross-origin request, which the relay allows with
 # -master-cors): an https:// URL, or http:// to loopback in local tests. Official builds never use http off loopback.
-[ -z "${WEBRA_MASTER_RELAY}" ] || printf '%s' "${WEBRA_MASTER_RELAY}" | grep -Eq '^(https?://[][A-Za-z0-9.:_~%/-]+|[A-Za-z0-9._~/-]*)$' \
-	|| fail "WEBRA_MASTER_RELAY must be a path or a plain https:// URL, without query: ${WEBRA_MASTER_RELAY}"
-if [ "${WEBRA_DEV}" != "1" ]; then
-	[ -z "${WEBRA_MASTER_RELAY}" ] || printf '%s' "${WEBRA_MASTER_RELAY}" | grep -Eq '^(https://|http://(127\.0\.0\.1|localhost|\[::1\])[:/]|[A-Za-z0-9._~/-]*$)' \
-		|| fail "official builds need an https:// master route (or a same-origin path): ${WEBRA_MASTER_RELAY}"
+[ -z "${PLAYRA_MASTER_RELAY}" ] || printf '%s' "${PLAYRA_MASTER_RELAY}" | grep -Eq '^(https?://[][A-Za-z0-9.:_~%/-]+|[A-Za-z0-9._~/-]*)$' \
+	|| fail "PLAYRA_MASTER_RELAY must be a path or a plain https:// URL, without query: ${PLAYRA_MASTER_RELAY}"
+if [ "${PLAYRA_DEV}" != "1" ]; then
+	[ -z "${PLAYRA_MASTER_RELAY}" ] || printf '%s' "${PLAYRA_MASTER_RELAY}" | grep -Eq '^(https://|http://(127\.0\.0\.1|localhost|\[::1\])[:/]|[A-Za-z0-9._~/-]*$)' \
+		|| fail "official builds need an https:// master route (or a same-origin path): ${PLAYRA_MASTER_RELAY}"
 fi
-WEBRA_STORAGE_NAME="${WEBRA_STORAGE_NAME:-}"
-[ -z "${WEBRA_STORAGE_NAME}" ] || printf '%s' "${WEBRA_STORAGE_NAME}" | grep -Eq '^[A-Za-z0-9:/._-]{0,64}$' || fail "WEBRA_STORAGE_NAME must be a plain name: ${WEBRA_STORAGE_NAME}"
+PLAYRA_STORAGE_NAME="${PLAYRA_STORAGE_NAME:-}"
+[ -z "${PLAYRA_STORAGE_NAME}" ] || printf '%s' "${PLAYRA_STORAGE_NAME}" | grep -Eq '^[A-Za-z0-9:/._-]{0,64}$' || fail "PLAYRA_STORAGE_NAME must be a plain name: ${PLAYRA_STORAGE_NAME}"
 
 # Content-addressed names for the data bundles (engine, maps), so browsers can cache them forever
-# (deploy/webra.caddy: immutable). build.json, which names them, is always revalidated. The name
+# (deploy/playra.caddy: immutable). build.json, which names them, is always revalidated. The name
 # covers the index too: a build that only changes paths (or adds an empty file) keeps the same .bin
 # bytes, and an index cached under the old name would not match it.
 bundle_hash() { (sha256sum < "$1.bin"; sha256sum < "$1.json") | sha256sum | cut -c 1-16; }
@@ -436,13 +436,13 @@ fi
 FRAMEWORK_BYTES="$(cat "${DIST}"/_framework/*.br | wc -c)"
 
 cat > "${DIST}/data/build.json" << EOF
-{"version":"${VERSION}","commit":"${COMMIT}","dev":${DEV_BOOL},"configuration":"${CONFIGURATION}","aot":${RUN_AOT},"runtime":"${DOTNET_RUNTIME_VERSION}","mods":"${WEBRA_MODS}","target":"${WEBRA_TARGET:-}","content":$([ -n "${WEBRA_CONTENT_DIR:-}" ] && echo true || echo false),"proxy":"${WEBRA_PROXY_URL}","contentRelay":"${WEBRA_CONTENT_RELAY}","contentUrl":"${WEBRA_CONTENT_URL}","masterRelay":"${WEBRA_MASTER_RELAY}","storage":"${WEBRA_STORAGE_NAME}","engineData":"data/engine.${ENGINE_HASH}","mapData":"${MAP_DATA}","contentManifest":"data/content-packages.json","frameworkBytes":${FRAMEWORK_BYTES}}
+{"version":"${VERSION}","commit":"${COMMIT}","dev":${DEV_BOOL},"configuration":"${CONFIGURATION}","aot":${RUN_AOT},"runtime":"${DOTNET_RUNTIME_VERSION}","mods":"${PLAYRA_MODS}","target":"${PLAYRA_TARGET:-}","content":$([ -n "${PLAYRA_CONTENT_DIR:-}" ] && echo true || echo false),"proxy":"${PLAYRA_RELAY_URL}","contentRelay":"${PLAYRA_CONTENT_RELAY}","contentUrl":"${PLAYRA_CONTENT_URL}","masterRelay":"${PLAYRA_MASTER_RELAY}","storage":"${PLAYRA_STORAGE_NAME}","engineData":"data/engine.${ENGINE_HASH}","mapData":"${MAP_DATA}","contentManifest":"data/content-packages.json","frameworkBytes":${FRAMEWORK_BYTES}}
 EOF
 
-# The page title (WEBRA_PAGE_TITLE). Only the browser tab's title: the game's own name and window title stay.
-# data-keep tells the page to keep it on the tab once the engine runs (webra-page.js keepPageTitle).
-if [ -n "${WEBRA_PAGE_TITLE:-}" ]; then
-	python3 -I - "${DIST}/index.html" "${WEBRA_PAGE_TITLE}" << 'PY'
+# The page title (PLAYRA_PAGE_TITLE). Only the browser tab's title: the game's own name and window title stay.
+# data-keep tells the page to keep it on the tab once the engine runs (playra-page.js keepPageTitle).
+if [ -n "${PLAYRA_PAGE_TITLE:-}" ]; then
+	python3 -I - "${DIST}/index.html" "${PLAYRA_PAGE_TITLE}" << 'PY'
 import html, sys
 path, title = sys.argv[1], sys.argv[2]
 page = open(path, encoding="utf-8").read()
@@ -454,14 +454,14 @@ PY
 	# The SDK's compressed copies of index.html are stale now.
 	rm -f "${DIST}/index.html.br" "${DIST}/index.html.gz"
 	python3 -I -c 'import gzip, sys; d = open(sys.argv[1], "rb").read(); open(sys.argv[1] + ".gz", "wb").write(gzip.compress(d, 9, mtime=0))' "${DIST}/index.html"
-	echo "index.html: title ${WEBRA_PAGE_TITLE}"
+	echo "index.html: title ${PLAYRA_PAGE_TITLE}"
 fi
 
-# The Content-Security-Policy also as <meta http-equiv> in the page (WEBRA_META_CSP=1): object storage
+# The Content-Security-Policy also as <meta http-equiv> in the page (PLAYRA_META_CSP=1): object storage
 # cannot send headers, and a CDN rule that is missing or wrong would otherwise leave the page without a
 # policy. Same policy as the header (tools/publish.py), minus frame-ancestors, which a meta policy ignores.
 # It goes first in <head>: a meta policy only covers what comes after it.
-if [ "${WEBRA_META_CSP:-0}" = "1" ]; then
+if [ "${PLAYRA_META_CSP:-0}" = "1" ]; then
 	CSP="$(python3 -I "${SRC_WEB}/tools/publish.py" csp "${DIST}" --meta)"
 	python3 -I - "${DIST}/index.html" "${CSP}" << 'PY'
 import html, sys
@@ -478,27 +478,27 @@ PY
 	echo "index.html: Content-Security-Policy in <meta>: ${CSP}"
 fi
 
-# The start screen (WEBRA_SPLASH): hosting/<name>-splash.html goes into index.html, which then opens on it
-# (body data-phase="splash"; webra-splash.js). The build fills in the version and the source link, which names
+# The start screen (PLAYRA_SPLASH): hosting/<name>-splash.html goes into index.html, which then opens on it
+# (body data-phase="splash"; playra-splash.js). The build fills in the version and the source link, which names
 # the commit the build was made from (the GPL's corresponding source; a dev build of a dirty tree links to the
 # commit it started from, and says so here). Its logo
 # slot (between <!-- logo --> and <!-- /logo -->) holds a text until hosting/<name>-logo.svg or .png exists:
 # then the file is copied as splash-logo.<ext> and shown instead.
-if [ -n "${WEBRA_SPLASH:-}" ]; then
-	printf '%s' "${WEBRA_SPLASH}" | grep -Eq '^[a-z0-9-]{1,32}$' || fail "WEBRA_SPLASH must be a plain name: ${WEBRA_SPLASH}"
-	SPLASH_HTML="${SRC_WEB}/hosting/${WEBRA_SPLASH}-splash.html"
+if [ -n "${PLAYRA_SPLASH:-}" ]; then
+	printf '%s' "${PLAYRA_SPLASH}" | grep -Eq '^[a-z0-9-]{1,32}$' || fail "PLAYRA_SPLASH must be a plain name: ${PLAYRA_SPLASH}"
+	SPLASH_HTML="${SRC_WEB}/hosting/${PLAYRA_SPLASH}-splash.html"
 	[ -f "${SPLASH_HTML}" ] || fail "no start screen ${SPLASH_HTML}"
-	WEBRA_SOURCE_URL="${WEBRA_SOURCE_URL:-https://github.com/lanhouse-playra/game}"
-	printf '%s' "${WEBRA_SOURCE_URL}" | grep -Eq '^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~/-]*)?$' || fail "WEBRA_SOURCE_URL must be a plain https:// URL: ${WEBRA_SOURCE_URL}"
+	PLAYRA_SOURCE_URL="${PLAYRA_SOURCE_URL:-https://github.com/lanhouse-playra/game}"
+	printf '%s' "${PLAYRA_SOURCE_URL}" | grep -Eq '^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~/-]*)?$' || fail "PLAYRA_SOURCE_URL must be a plain https:// URL: ${PLAYRA_SOURCE_URL}"
 	SOURCE_COMMIT="${COMMIT%-dirty}"
 	printf '%s' "${SOURCE_COMMIT}" | grep -Eq '^[0-9a-f]{40}$' || fail "the start screen links to the build's commit, and this build has none (${COMMIT})"
-	SOURCE_LINK="${WEBRA_SOURCE_URL%/}/tree/${SOURCE_COMMIT}"
+	SOURCE_LINK="${PLAYRA_SOURCE_URL%/}/tree/${SOURCE_COMMIT}"
 	[ "${SOURCE_COMMIT}" = "${COMMIT}" ] || echo "WARNING: dirty working tree: the start screen's source link names ${SOURCE_COMMIT}, which lacks the uncommitted changes" >&2
 	SPLASH_LOGO=""
 	for ext in svg png; do
-		if [ -f "${SRC_WEB}/hosting/${WEBRA_SPLASH}-logo.${ext}" ]; then
+		if [ -f "${SRC_WEB}/hosting/${PLAYRA_SPLASH}-logo.${ext}" ]; then
 			SPLASH_LOGO="splash-logo.${ext}"
-			cp "${SRC_WEB}/hosting/${WEBRA_SPLASH}-logo.${ext}" "${DIST}/${SPLASH_LOGO}"
+			cp "${SRC_WEB}/hosting/${PLAYRA_SPLASH}-logo.${ext}" "${DIST}/${SPLASH_LOGO}"
 			break
 		fi
 	done
@@ -545,7 +545,7 @@ echo "brotli: $(grep -c '"kept"' "${OBJ}/brotli.log") checked, $(grep -vc '"kept
 # What a first visit downloads (up to the main menu, and the maps package right after it), in the bytes
 # the publish uploads (so after the brotli copies), into build.json: the start screen shows the size, and
 # checks the list against the browser's cache (tools/publish.py first-visit). build.json changed, so its brotli copy is made again.
-python3 -I "${SRC_WEB}/tools/publish.py" first-visit "${DIST}" --encoding "${WEBRA_PUBLISH_ENCODING:-br}"
+python3 -I "${SRC_WEB}/tools/publish.py" first-visit "${DIST}" --encoding "${PLAYRA_PUBLISH_ENCODING:-br}"
 "${EMSDK_NODE}" "${SRC_WEB}/tools/brotli.mjs" "${DIST}/data/build.json" >> "${OBJ}/brotli.log"
 
 # Precompressed copies of the data for the web server (the SDK already compressed _framework and
@@ -556,8 +556,8 @@ python3 -I "${SRC_WEB}/tools/precompress.py" "${DIST}/data"
 # (tools/publish.py). Not for builds with local content, which must never be published.
 PUBLISH_MANIFEST="${WEB}/publish.json"
 rm -f "${PUBLISH_MANIFEST}"
-if [ -z "${WEBRA_CONTENT_DIR:-}" ]; then
-	python3 -I "${SRC_WEB}/tools/publish.py" manifest "${DIST}" "${PUBLISH_MANIFEST}" --encoding "${WEBRA_PUBLISH_ENCODING:-br}"
+if [ -z "${PLAYRA_CONTENT_DIR:-}" ]; then
+	python3 -I "${SRC_WEB}/tools/publish.py" manifest "${DIST}" "${PUBLISH_MANIFEST}" --encoding "${PLAYRA_PUBLISH_ENCODING:-br}"
 fi
 
 echo "Built ${VERSION} (${COMMIT}, dev=${DEV_BOOL}, AOT=${RUN_AOT}) into ${DIST}"

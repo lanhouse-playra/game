@@ -61,7 +61,7 @@ export async function enterFullscreen() {
 	try {
 		await element.requestFullscreen({ navigationUI: 'hide' });
 	} catch (e) {
-		console.warn('[webra] fullscreen failed:', e);
+		console.warn('[playra] fullscreen failed:', e);
 		return false;
 	}
 
@@ -81,12 +81,12 @@ export async function toggleFullscreen() {
 	try {
 		await document.exitFullscreen();
 	} catch (e) {
-		console.warn('[webra] leaving fullscreen failed:', e);
+		console.warn('[playra] leaving fullscreen failed:', e);
 	}
 }
 
 // The engine names its window ("OpenRA - Red Alert"), and emscripten's SDL writes a window title into
-// document.title. A title the build set for its site (WEBRA_PAGE_TITLE, written as <title data-keep>)
+// document.title. A title the build set for its site (PLAYRA_PAGE_TITLE, written as <title data-keep>)
 // stays on the tab instead; without one, the tab shows the window title as before.
 export function keepPageTitle() {
 	const element = document.querySelector('title[data-keep]');
@@ -258,7 +258,7 @@ export async function copyText(text, refocus) {
 			return true;
 		}
 	} catch (e) {
-		console.warn('[webra] clipboard write refused, trying the fallback:', e);
+		console.warn('[playra] clipboard write refused, trying the fallback:', e);
 	}
 
 	const area = document.createElement('textarea');
@@ -272,7 +272,7 @@ export async function copyText(text, refocus) {
 		area.select();
 		return document.execCommand('copy');
 	} catch (e) {
-		console.warn('[webra] clipboard fallback failed:', e);
+		console.warn('[playra] clipboard fallback failed:', e);
 		return false;
 	} finally {
 		area.remove();

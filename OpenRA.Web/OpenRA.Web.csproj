@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk.WebAssembly">
 	<!--
 		Browser (WebAssembly) host for OpenRA. Built by build-web.sh, which first produces the native
-		inputs below ($(WebraNativeDir)) and the Eluant build with WebAssembly callback markers
-		($(WebraEluantPath)) and the generated GL delegate signatures ($(WebraGeneratedDir)).
+		inputs below ($(PlayraNativeDir)) and the Eluant build with WebAssembly callback markers
+		($(PlayraEluantPath)) and the generated GL delegate signatures ($(PlayraGeneratedDir)).
 	-->
 	<PropertyGroup>
 		<OutputType>Exe</OutputType>
@@ -28,7 +28,7 @@
 
 		<!-- Native build: link emscripten's SDL2, FreeType, OpenAL and WebGL 2 plus our Lua and GL shim. -->
 		<WasmBuildNative>true</WasmBuildNative>
-		<WasmCachePath Condition="'$(WebraEmCache)' != ''">$(WebraEmCache)</WasmCachePath>
+		<WasmCachePath Condition="'$(PlayraEmCache)' != ''">$(PlayraEmCache)</WasmCachePath>
 		<EmccInitialHeapSize>268435456</EmccInitialHeapSize>
 		<EmccMaximumHeapSize>2147483648</EmccMaximumHeapSize>
 		<EmccExtraLDFlags>-sUSE_SDL=2 -sUSE_FREETYPE=1 -lopenal -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1 -sGL_ENABLE_GET_PROC_ADDRESS=1 -sSUPPORT_LONGJMP=wasm</EmccExtraLDFlags>
@@ -71,17 +71,17 @@
 		<Compile Include="conformance/ConformanceCorpus.cs" />
 	</ItemGroup>
 
-	<ItemGroup Condition="'$(WebraGeneratedDir)' != ''">
-		<Compile Include="$(WebraGeneratedDir)GLSignatures.g.cs" />
-		<Compile Include="$(WebraGeneratedDir)WebraBuildInfo.g.cs" />
+	<ItemGroup Condition="'$(PlayraGeneratedDir)' != ''">
+		<Compile Include="$(PlayraGeneratedDir)GLSignatures.g.cs" />
+		<Compile Include="$(PlayraGeneratedDir)PlayraBuildInfo.g.cs" />
 	</ItemGroup>
 
-	<ItemGroup Condition="'$(WebraNativeDir)' != ''">
-		<NativeFileReference Include="$(WebraNativeDir)lua51.a" />
-		<NativeFileReference Include="$(WebraNativeDir)webra.a" />
-		<NativeFileReference Include="$(WebraNativeDir)SDL2.a" />
-		<NativeFileReference Include="$(WebraNativeDir)freetype6.a" />
-		<NativeFileReference Include="$(WebraNativeDir)soft_oal.a" />
+	<ItemGroup Condition="'$(PlayraNativeDir)' != ''">
+		<NativeFileReference Include="$(PlayraNativeDir)lua51.a" />
+		<NativeFileReference Include="$(PlayraNativeDir)playra.a" />
+		<NativeFileReference Include="$(PlayraNativeDir)SDL2.a" />
+		<NativeFileReference Include="$(PlayraNativeDir)freetype6.a" />
+		<NativeFileReference Include="$(PlayraNativeDir)soft_oal.a" />
 	</ItemGroup>
 
 	<!--
@@ -98,12 +98,12 @@
 		Swap the packaged Eluant.dll for the same upstream source built with its MonoPInvokeCallback
 		markers enabled (see native/eluant/MonoPInvokeCallbackAttribute.cs). The API is identical.
 	-->
-	<Target Name="WebraUseWasmEluant" AfterTargets="ResolvePackageAssets" Condition="'$(WebraEluantPath)' != ''">
-		<Error Condition="!Exists('$(WebraEluantPath)')" Text="WebraEluantPath does not exist: $(WebraEluantPath)" />
+	<Target Name="PlayraUseWasmEluant" AfterTargets="ResolvePackageAssets" Condition="'$(PlayraEluantPath)' != ''">
+		<Error Condition="!Exists('$(PlayraEluantPath)')" Text="PlayraEluantPath does not exist: $(PlayraEluantPath)" />
 		<ItemGroup>
-			<_WebraPackagedEluant Include="@(RuntimeCopyLocalItems)" Condition="'%(Filename)%(Extension)' == 'Eluant.dll'" />
-			<RuntimeCopyLocalItems Remove="@(_WebraPackagedEluant)" />
-			<RuntimeCopyLocalItems Include="$(WebraEluantPath)" NuGetPackageId="OpenRA-Eluant" NuGetPackageVersion="wasm" AssetType="runtime" CopyLocal="true" DestinationSubPath="Eluant.dll" />
+			<_PlayraPackagedEluant Include="@(RuntimeCopyLocalItems)" Condition="'%(Filename)%(Extension)' == 'Eluant.dll'" />
+			<RuntimeCopyLocalItems Remove="@(_PlayraPackagedEluant)" />
+			<RuntimeCopyLocalItems Include="$(PlayraEluantPath)" NuGetPackageId="OpenRA-Eluant" NuGetPackageVersion="wasm" AssetType="runtime" CopyLocal="true" DestinationSubPath="Eluant.dll" />
 		</ItemGroup>
 	</Target>
 </Project>

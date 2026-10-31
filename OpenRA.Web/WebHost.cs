@@ -42,16 +42,16 @@ namespace OpenRA.Web
 		// The runtime starts without running Main: the page drives the engine through the exports below.
 		public static void Main() { }
 
-		/// <summary>Shows a message to the player over the game until closed (page module "webra-page").</summary>
-		[JSImport("notify", "webra-page")]
+		/// <summary>Shows a message to the player over the game until closed (page module "playra-page").</summary>
+		[JSImport("notify", "playra-page")]
 		private static partial void JsNotify(string text);
 
-		/// <summary>Saves the support directory in the browser's storage, then reloads the page (page module "webra-page").</summary>
-		[JSImport("restart", "webra-page")]
+		/// <summary>Saves the support directory in the browser's storage, then reloads the page (page module "playra-page").</summary>
+		[JSImport("restart", "playra-page")]
 		private static partial void JsRestart();
 
-		/// <summary>Puts text on the system clipboard; true once it is there (page module "webra-page").</summary>
-		[JSImport("copyText", "webra-page")]
+		/// <summary>Puts text on the system clipboard; true once it is there (page module "playra-page").</summary>
+		[JSImport("copyText", "playra-page")]
 		[return: JSMarshalAs<JSType.Promise<JSType.Boolean>>]
 		private static partial Task<bool> JsCopyText(string text);
 

@@ -4,8 +4,8 @@
  #include "lauxlib.h"
  #include "lualib.h"
  
-+/* WebRA: glibc-compatible strtoull, in lobject.c */
-+LUAI_FUNC unsigned long long luaO_webra_strtoull (const char *s, char **endptr, int base);
++/* PlayRA: glibc-compatible strtoull, in lobject.c */
++LUAI_FUNC unsigned long long luaO_playra_strtoull (const char *s, char **endptr, int base);
 +
  
  
@@ -15,10 +15,10 @@
      const char *s1 = luaL_checkstring(L, 1);
      char *s2;
 -    unsigned long n;
-+    unsigned long long n;  /* WebRA: unsigned long is 64-bit on desktop Linux and macOS */
++    unsigned long long n;  /* PlayRA: unsigned long is 64-bit on desktop Linux and macOS */
      luaL_argcheck(L, 2 <= base && base <= 36, 2, "base out of range");
 -    n = strtoul(s1, &s2, base);
-+    n = luaO_webra_strtoull(s1, &s2, base);
++    n = luaO_playra_strtoull(s1, &s2, base);
      if (s1 != s2) {  /* at least one valid digit? */
        while (isspace((unsigned char)(*s2))) s2++;  /* skip trailing spaces */
        if (*s2 == '\0') {  /* no invalid trailing characters? */
@@ -29,16 +29,16 @@
  
  
 +/*
-+** WebRA: the sign of a NaN shows in tostring ("nan" or "-nan"), so reproduce glibc (desktop Linux):
++** PlayRA: the sign of a NaN shows in tostring ("nan" or "-nan"), so reproduce glibc (desktop Linux):
 +** a NaN argument comes back unchanged (musl's sinh and cosh clear its sign), and the domain errors
 +** of asin, acos, log and log10 (asin(2), log(-1)) give a positive NaN (musl computes 0/0, which is
 +** a negative NaN on x86).
 +*/
-+static lua_Number webra_nan_arg (lua_Number x, lua_Number r) {
++static lua_Number playra_nan_arg (lua_Number x, lua_Number r) {
 +  return (x != x) ? x : r;
 +}
 +
-+static lua_Number webra_domain_nan (lua_Number x, lua_Number r) {
++static lua_Number playra_domain_nan (lua_Number x, lua_Number r) {
 +  if (x != x) return x;
 +  if (r != r) return fabs(r);
 +  return r;
@@ -54,63 +54,63 @@
  static int math_sin (lua_State *L) {
 -  lua_pushnumber(L, sin(luaL_checknumber(L, 1)));
 +  lua_Number x = luaL_checknumber(L, 1);
-+  lua_pushnumber(L, webra_nan_arg(x, sin(x)));
++  lua_pushnumber(L, playra_nan_arg(x, sin(x)));
    return 1;
  }
  
  static int math_sinh (lua_State *L) {
 -  lua_pushnumber(L, sinh(luaL_checknumber(L, 1)));
 +  lua_Number x = luaL_checknumber(L, 1);
-+  lua_pushnumber(L, webra_nan_arg(x, sinh(x)));
++  lua_pushnumber(L, playra_nan_arg(x, sinh(x)));
    return 1;
  }
  
  static int math_cos (lua_State *L) {
 -  lua_pushnumber(L, cos(luaL_checknumber(L, 1)));
 +  lua_Number x = luaL_checknumber(L, 1);
-+  lua_pushnumber(L, webra_nan_arg(x, cos(x)));
++  lua_pushnumber(L, playra_nan_arg(x, cos(x)));
    return 1;
  }
  
  static int math_cosh (lua_State *L) {
 -  lua_pushnumber(L, cosh(luaL_checknumber(L, 1)));
 +  lua_Number x = luaL_checknumber(L, 1);
-+  lua_pushnumber(L, webra_nan_arg(x, cosh(x)));
++  lua_pushnumber(L, playra_nan_arg(x, cosh(x)));
    return 1;
  }
  
  static int math_tan (lua_State *L) {
 -  lua_pushnumber(L, tan(luaL_checknumber(L, 1)));
 +  lua_Number x = luaL_checknumber(L, 1);
-+  lua_pushnumber(L, webra_nan_arg(x, tan(x)));
++  lua_pushnumber(L, playra_nan_arg(x, tan(x)));
    return 1;
  }
  
  static int math_tanh (lua_State *L) {
 -  lua_pushnumber(L, tanh(luaL_checknumber(L, 1)));
 +  lua_Number x = luaL_checknumber(L, 1);
-+  lua_pushnumber(L, webra_nan_arg(x, tanh(x)));
++  lua_pushnumber(L, playra_nan_arg(x, tanh(x)));
    return 1;
  }
  
  static int math_asin (lua_State *L) {
 -  lua_pushnumber(L, asin(luaL_checknumber(L, 1)));
 +  lua_Number x = luaL_checknumber(L, 1);
-+  lua_pushnumber(L, webra_domain_nan(x, asin(x)));
++  lua_pushnumber(L, playra_domain_nan(x, asin(x)));
    return 1;
  }
  
  static int math_acos (lua_State *L) {
 -  lua_pushnumber(L, acos(luaL_checknumber(L, 1)));
 +  lua_Number x = luaL_checknumber(L, 1);
-+  lua_pushnumber(L, webra_domain_nan(x, acos(x)));
++  lua_pushnumber(L, playra_domain_nan(x, acos(x)));
    return 1;
  }
  
  static int math_atan (lua_State *L) {
 -  lua_pushnumber(L, atan(luaL_checknumber(L, 1)));
 +  lua_Number x = luaL_checknumber(L, 1);
-+  lua_pushnumber(L, webra_nan_arg(x, atan(x)));
++  lua_pushnumber(L, playra_nan_arg(x, atan(x)));
    return 1;
  }
  
@@ -120,21 +120,21 @@
  static int math_log (lua_State *L) {
 -  lua_pushnumber(L, log(luaL_checknumber(L, 1)));
 +  lua_Number x = luaL_checknumber(L, 1);
-+  lua_pushnumber(L, webra_domain_nan(x, log(x)));
++  lua_pushnumber(L, playra_domain_nan(x, log(x)));
    return 1;
  }
  
  static int math_log10 (lua_State *L) {
 -  lua_pushnumber(L, log10(luaL_checknumber(L, 1)));
 +  lua_Number x = luaL_checknumber(L, 1);
-+  lua_pushnumber(L, webra_domain_nan(x, log10(x)));
++  lua_pushnumber(L, playra_domain_nan(x, log10(x)));
    return 1;
  }
  
  static int math_exp (lua_State *L) {
 -  lua_pushnumber(L, exp(luaL_checknumber(L, 1)));
 +  lua_Number x = luaL_checknumber(L, 1);
-+  lua_pushnumber(L, webra_nan_arg(x, exp(x)));
++  lua_pushnumber(L, playra_nan_arg(x, exp(x)));
    return 1;
  }
  
@@ -145,10 +145,10 @@
  
  
 +/*
-+** WebRA: glibc's strtoul/strtoull read "0x" without hex digits after it as "0" and stop before the
++** PlayRA: glibc's strtoul/strtoull read "0x" without hex digits after it as "0" and stop before the
 +** "x"; musl consumes the prefix. Reproduce glibc (desktop Linux), and parse in 64 bits as on LP64.
 +*/
-+LUAI_FUNC unsigned long long luaO_webra_strtoull (const char *s, char **endptr, int base) {
++LUAI_FUNC unsigned long long luaO_playra_strtoull (const char *s, char **endptr, int base) {
 +  const char *p = s;
 +  while (isspace(cast(unsigned char, *p))) p++;
 +  if (*p == '+' || *p == '-') p++;
@@ -167,7 +167,7 @@
    if (endptr == s) return 0;  /* conversion failed */
    if (*endptr == 'x' || *endptr == 'X')  /* maybe an hexadecimal constant? */
 -    *result = cast_num(strtoul(s, &endptr, 16));
-+    *result = cast_num(luaO_webra_strtoull(s, &endptr, 16));
++    *result = cast_num(luaO_playra_strtoull(s, &endptr, 16));
    if (*endptr == '\0') return 1;  /* most common case */
    while (isspace(cast(unsigned char, *endptr))) endptr++;
    if (*endptr != '\0') return 0;  /* invalid trailing characters? */
@@ -179,7 +179,7 @@
  
 -static ptrdiff_t posrelat (ptrdiff_t pos, size_t len) {
 +/*
-+** WebRA: string positions are computed in lua_Integer (64-bit) instead of ptrdiff_t, which is
++** PlayRA: string positions are computed in lua_Integer (64-bit) instead of ptrdiff_t, which is
 +** 64-bit on desktop but 32-bit on wasm32. Positions are clamped to the string length before
 +** they are used as offsets, so the results are those of desktop x64 for every argument.
 +*/
@@ -192,12 +192,12 @@
  
  
 +/*
-+** WebRA: desktop x64 converts a double to an unsigned 64-bit integer with cvttsd2si, offsetting
++** PlayRA: desktop x64 converts a double to an unsigned 64-bit integer with cvttsd2si, offsetting
 +** values >= 2^63 (gcc and clang code generation): negative values wrap, NaN and out-of-range values
 +** give 2^63 or 0. WebAssembly's conversion gives 0 for every negative or out-of-range value.
 +** (long long) conversions already match: wasm returns INT64_MIN out of range, like cvttsd2si.
 +*/
-+static unsigned long long webra_number2ull (lua_Number d) {
++static unsigned long long playra_number2ull (lua_Number d) {
 +  if (d >= 9223372036854775808.0)
 +    return (unsigned long long)(long long)(d - 9223372036854775808.0) ^ 0x8000000000000000ULL;
 +  return (unsigned long long)(long long)d;
@@ -249,7 +249,7 @@
          case 'o':  case 'u':  case 'x':  case 'X': {
            addintlen(form);
 -          sprintf(buff, form, (unsigned LUA_INTFRM_T)luaL_checknumber(L, arg));
-+          sprintf(buff, form, (unsigned LUA_INTFRM_T)webra_number2ull(luaL_checknumber(L, arg)));
++          sprintf(buff, form, (unsigned LUA_INTFRM_T)playra_number2ull(luaL_checknumber(L, arg)));
            break;
          }
          case 'e':  case 'E': case 'f':
@@ -261,7 +261,7 @@
  */
 -#define LUA_INTEGER	ptrdiff_t
 +/*
-+** WebRA: lua_Integer is 64-bit on desktop x64 and arm64 (ptrdiff_t), but ptrdiff_t is 32-bit on
++** PlayRA: lua_Integer is 64-bit on desktop x64 and arm64 (ptrdiff_t), but ptrdiff_t is 32-bit on
 +** wasm32. Use long long so that luaL_checkinteger, luaL_checkint and friends behave as on desktop.
 +*/
 +#define LUA_INTEGER	long long
@@ -272,7 +272,7 @@
  ** CHANGE them if your system supports long long or does not support long.
  */
  
-+/* WebRA: long is 64-bit on desktop Linux and macOS (LP64) and 32-bit on wasm32. */
++/* PlayRA: long is 64-bit on desktop Linux and macOS (LP64) and 32-bit on wasm32. */
 +#define LUA_USELONGLONG
 +
  #if defined(LUA_USELONGLONG)

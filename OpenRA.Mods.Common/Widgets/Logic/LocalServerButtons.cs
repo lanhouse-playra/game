@@ -39,7 +39,7 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 		public static void Disable(ButtonWidget button, string tooltipContainer, string hint = Game.BrowserNoLocalServerHint)
 		{
 			// Dev pages only (release pages ignore ?env=): keep the entries, to test the browser's UI action guard.
-			if (Environment.GetEnvironmentVariable("WEBRA_TEST_LOCAL_SERVER_ENTRIES") == "1")
+			if (Environment.GetEnvironmentVariable("PLAYRA_TEST_LOCAL_SERVER_ENTRIES") == "1")
 				return;
 
 			BrowserUnavailable.Disable(button, tooltipContainer, hint);

@@ -32,19 +32,19 @@ try {
 	page.on('console', m => log.push(`[${m.type()}] ${m.text()}`));
 	page.on('pageerror', e => log.push(`[pageerror] ${e.message}`));
 	await page.goto(url);
-	await page.waitForFunction(() => window.WebRA && ['running', 'error', 'exited'].includes(window.WebRA.phase),
+	await page.waitForFunction(() => window.PlayRA && ['running', 'error', 'exited'].includes(window.PlayRA.phase),
 		null, { timeout: (+process.env.BOOT_TIMEOUT || 600) * 1000, polling: 500 });
 
-	const phase = await page.evaluate(() => window.WebRA.phase);
+	const phase = await page.evaluate(() => window.PlayRA.phase);
 	if (phase !== 'running') {
 		console.error(`boot ended in phase '${phase}':\n${log.slice(-40).join('\n')}`);
 		status = 1;
 	} else {
 		const r = await page.evaluate(() => {
-			const runner = window.WebRA.allExports.OpenRA.Web.ConformanceRunner;
+			const runner = window.PlayRA.allExports.OpenRA.Web.ConformanceRunner;
 			const t0 = performance.now();
 			const corpus = runner.Run();
-			return { corpus, mismatches: runner.RawCastMismatches(), ms: Math.round(performance.now() - t0), build: window.WebRA.build };
+			return { corpus, mismatches: runner.RawCastMismatches(), ms: Math.round(performance.now() - t0), build: window.PlayRA.build };
 		});
 		fs.writeFileSync(out, r.corpus);
 		console.log(`build ${JSON.stringify(r.build)}`);

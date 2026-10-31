@@ -11,7 +11,7 @@
  * GL lookup shim for the browser (WebAssembly) build.
  *
  * OpenRA.Platforms.Default binds every GL entry point through a function pointer lookup.
- * In the browser that lookup goes through webra_gl_get_proc_address(), which returns
+ * In the browser that lookup goes through playra_gl_get_proc_address(), which returns
  * emscripten's WebGL 2 implementation for everything except the calls below:
  *
  * The engine's GLES profile uploads textures as GL_BGRA (GL_EXT_texture_format_BGRA8888),
@@ -28,7 +28,7 @@
 #include <wasm_simd128.h>
 #endif
 
-#define WEBRA_GL_BGRA 0x80E1
+#define PLAYRA_GL_BGRA 0x80E1
 
 extern void *SDL_GL_GetProcAddress(const char *proc);
 
@@ -133,28 +133,28 @@ static void texture_state_update(GLuint id, uint8_t set, uint8_t clear)
 	texture_state[id] = (uint8_t)((texture_state[id] & ~clear) | set);
 }
 
-static void webra_glGenTextures(GLsizei n, GLuint *textures)
+static void playra_glGenTextures(GLsizei n, GLuint *textures)
 {
 	glGenTextures(n, textures);
 	for (GLsizei i = 0; i < n; i++)
 		texture_state_update(textures[i], TEXTURE_LIVE, TEXTURE_BOUND);
 }
 
-static void webra_glDeleteTextures(GLsizei n, const GLuint *textures)
+static void playra_glDeleteTextures(GLsizei n, const GLuint *textures)
 {
 	for (GLsizei i = 0; i < n; i++)
 		texture_state_update(textures[i], 0, TEXTURE_LIVE | TEXTURE_BOUND);
 	glDeleteTextures(n, textures);
 }
 
-static void webra_glBindTexture(GLenum target, GLuint texture)
+static void playra_glBindTexture(GLenum target, GLuint texture)
 {
 	if (texture != 0 && texture < texture_state_size && (texture_state[texture] & TEXTURE_LIVE))
 		texture_state[texture] |= TEXTURE_BOUND;
 	glBindTexture(target, texture);
 }
 
-static GLboolean webra_glIsTexture(GLuint texture)
+static GLboolean playra_glIsTexture(GLuint texture)
 {
 	return texture != 0 && texture < texture_state_size
 		&& texture_state[texture] == (TEXTURE_LIVE | TEXTURE_BOUND) ? GL_TRUE : GL_FALSE;
@@ -167,7 +167,7 @@ static void set_unpack(GLint row_length, GLint skip_pixels, GLint skip_rows)
 	glPixelStorei(GL_UNPACK_SKIP_ROWS, skip_rows);
 }
 
-static void webra_glPixelStorei(GLenum pname, GLint param)
+static void playra_glPixelStorei(GLenum pname, GLint param)
 {
 	switch (pname)
 	{
@@ -180,13 +180,13 @@ static void webra_glPixelStorei(GLenum pname, GLint param)
 	glPixelStorei(pname, param);
 }
 
-static void webra_glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height,
+static void playra_glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height,
 	GLint border, GLenum format, GLenum type, const void *pixels)
 {
-	if (internalformat == WEBRA_GL_BGRA)
+	if (internalformat == PLAYRA_GL_BGRA)
 		internalformat = GL_RGBA;
 
-	if (format != WEBRA_GL_BGRA)
+	if (format != PLAYRA_GL_BGRA)
 	{
 		glTexImage2D(target, level, internalformat, width, height, border, format, type, pixels);
 		return;
@@ -198,10 +198,10 @@ static void webra_glTexImage2D(GLenum target, GLint level, GLint internalformat,
 	set_unpack(unpack_row_length, unpack_skip_pixels, unpack_skip_rows);
 }
 
-static void webra_glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height,
+static void playra_glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height,
 	GLenum format, GLenum type, const void *pixels)
 {
-	if (format != WEBRA_GL_BGRA)
+	if (format != PLAYRA_GL_BGRA)
 	{
 		glTexSubImage2D(target, level, xoffset, yoffset, width, height, format, type, pixels);
 		return;
@@ -216,40 +216,40 @@ static void webra_glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLi
 	set_unpack(unpack_row_length, unpack_skip_pixels, unpack_skip_rows);
 }
 
-static void webra_glCopyTexImage2D(GLenum target, GLint level, GLenum internalformat, GLint x, GLint y,
+static void playra_glCopyTexImage2D(GLenum target, GLint level, GLenum internalformat, GLint x, GLint y,
 	GLsizei width, GLsizei height, GLint border)
 {
-	if (internalformat == WEBRA_GL_BGRA)
+	if (internalformat == PLAYRA_GL_BGRA)
 		internalformat = GL_RGBA;
 
 	glCopyTexImage2D(target, level, internalformat, x, y, width, height, border);
 }
 
-void *webra_gl_get_proc_address(const char *name)
+void *playra_gl_get_proc_address(const char *name)
 {
 	if (strcmp(name, "glPixelStorei") == 0)
-		return (void *)webra_glPixelStorei;
+		return (void *)playra_glPixelStorei;
 
 	if (strcmp(name, "glTexImage2D") == 0)
-		return (void *)webra_glTexImage2D;
+		return (void *)playra_glTexImage2D;
 
 	if (strcmp(name, "glTexSubImage2D") == 0)
-		return (void *)webra_glTexSubImage2D;
+		return (void *)playra_glTexSubImage2D;
 
 	if (strcmp(name, "glCopyTexImage2D") == 0)
-		return (void *)webra_glCopyTexImage2D;
+		return (void *)playra_glCopyTexImage2D;
 
 	if (strcmp(name, "glGenTextures") == 0)
-		return (void *)webra_glGenTextures;
+		return (void *)playra_glGenTextures;
 
 	if (strcmp(name, "glDeleteTextures") == 0)
-		return (void *)webra_glDeleteTextures;
+		return (void *)playra_glDeleteTextures;
 
 	if (strcmp(name, "glBindTexture") == 0)
-		return (void *)webra_glBindTexture;
+		return (void *)playra_glBindTexture;
 
 	if (strcmp(name, "glIsTexture") == 0)
-		return (void *)webra_glIsTexture;
+		return (void *)playra_glIsTexture;
 
 	return SDL_GL_GetProcAddress(name);
 }

@@ -16,7 +16,7 @@ usage:
       the master route). --meta: the form for <meta http-equiv>, without the directives a meta policy
       ignores (frame-ancestors).
   publish.py manifest <dist> <out.json> [--encoding br|identity]
-      Writes the publish manifest (format "webra-publish/1", see below).
+      Writes the publish manifest (format "playra-publish/1", see below).
   publish.py check <publish.json> <dist> <content dir>
       Checks that every object the manifest lists is there with the bytes it names, the game content
       packages included. Run it before an upload.
@@ -29,7 +29,7 @@ The manifest is all an uploader needs; it never decides a header itself:
 
   files[]           one entry per object, keyed by its path under the base path the build is
                     published at (at the root of its own origin, as for Lanhouse, the key is the object
-                    name; under a path the uploader adds the prefix, e.g. "webra/". The page finds its
+                    name; under a path the uploader adds the prefix, e.g. "playra/". The page finds its
                     files relative to itself, so either works):
     key               "index.html", "_framework/dotnet.native.<fingerprint>.wasm", ...
     from, source      where the bytes are: "dist" (relative to the dist directory) or "content" (the
@@ -67,7 +67,7 @@ import re
 import sys
 from urllib.parse import urlsplit
 
-FORMAT = "webra-publish/1"
+FORMAT = "playra-publish/1"
 
 # Files whose name never changes for other bytes: fingerprinted _framework files (.NET SDK), the data
 # bundles named by their hash (build-web.sh), game content packages named by their SHA1.
@@ -98,7 +98,7 @@ ICONS = re.compile(r"^(favicon\.(svg|ico)|favicon-[0-9]+\.png|apple-touch-icon\.
 CACHE_ICON = "public, max-age=86400"
 
 # Hosts the engine itself talks to: the server list, the resource center (maps), mod metadata and
-# icons, the forum (account link). Same list as deploy/webra.caddy.
+# icons, the forum (account link). Same list as deploy/playra.caddy.
 OPENRA_HOSTS = ["https://master.openra.net", "https://resource.openra.net", "https://www.openra.net", "https://forum.openra.net"]
 
 
@@ -199,7 +199,7 @@ def sha256_of(path):
 
 
 def content_plan(manifest):
-    """The packages the page downloads (webra-content.js plan()): the quick download if it provides
+    """The packages the page downloads (playra-content.js plan()): the quick download if it provides
     every required test file, otherwise each required package's own download."""
     by_id = {p["id"]: p for p in manifest["packages"]}
     needed = [f for r in manifest["required"] for f in r["testFiles"]]
@@ -252,7 +252,7 @@ def object_entry(key, source_from, source, path, encoding):
 def make_manifest(dist, encoding):
     build = load_build(dist)
     if build.get("content"):
-        fail("this build packages game content (WEBRA_CONTENT_DIR): it must never be published")
+        fail("this build packages game content (PLAYRA_CONTENT_DIR): it must never be published")
 
     files = []
     for root, dirs, names in os.walk(dist):
@@ -341,7 +341,7 @@ def first_visit(dist, encoding):
     language uses."""
     build = load_build(dist)
     keys = ["index.html", "favicon.svg"]
-    # The start screen's logo (build-web.sh WEBRA_SPLASH), shown with the page.
+    # The start screen's logo (build-web.sh PLAYRA_SPLASH), shown with the page.
     keys += [n for n in ("splash-logo.svg", "splash-logo.png") if os.path.isfile(os.path.join(dist, n))]
     keys += sorted(n for n in os.listdir(dist) if n.endswith(".js") and os.path.isfile(os.path.join(dist, n)))
     keys += ["data/build.json", build.get("contentManifest") or "data/content-packages.json"]

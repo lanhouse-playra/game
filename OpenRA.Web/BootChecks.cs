@@ -36,14 +36,14 @@ namespace OpenRA.Web
 		public static void Run()
 		{
 			var runtime = Environment.Version.ToString();
-			if (runtime != WebraBuildInfo.RuntimeVersion)
-				Fail($"the .NET runtime is {runtime}, but this build was validated with {WebraBuildInfo.RuntimeVersion}");
+			if (runtime != PlayraBuildInfo.RuntimeVersion)
+				Fail($"the .NET runtime is {runtime}, but this build was validated with {PlayraBuildInfo.RuntimeVersion}");
 
 			var options = Environment.GetEnvironmentVariable("MONO_INTERPRETER_OPTIONS") ?? "";
 			if (!options.Contains(InterpreterWorkaround, StringComparison.Ordinal))
 			{
 				var message = $"MONO_INTERPRETER_OPTIONS is '{options}', without '{InterpreterWorkaround}' (the interpreter memory corruption workaround)";
-				if (!WebraBuildInfo.Dev)
+				if (!PlayraBuildInfo.Dev)
 					Fail(message);
 
 				Console.Error.WriteLine("OpenRA.Web: WARNING: " + message + "; allowed in a dev build only");
@@ -53,7 +53,7 @@ namespace OpenRA.Web
 			if (error != null)
 				Fail("the interpreter self-test failed: " + error);
 
-			Console.WriteLine($"OpenRA.Web: boot checks passed (runtime {runtime}, interpreter options '{options}', {WebraBuildInfo.Version} {WebraBuildInfo.Commit})");
+			Console.WriteLine($"OpenRA.Web: boot checks passed (runtime {runtime}, interpreter options '{options}', {PlayraBuildInfo.Version} {PlayraBuildInfo.Commit})");
 		}
 
 		static void Fail(string message)
