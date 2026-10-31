@@ -48,7 +48,7 @@
 #                       (markup put into index.html), with its logo OpenRA.Web/hosting/<name>-logo.svg or .png if
 #                       there is one. Default: none, the page starts the game at once
 #   WEBRA_SOURCE_URL    the repository the start screen's "source code" link points into, default
-#                       https://github.com/openra-web/game: the link is <url>/tree/<commit>, the exact source of the build
+#                       https://github.com/lanhouse-playra/game: the link is <url>/tree/<commit>, the exact source of the build
 #   WEBRA_PUBLISH_ENCODING  br (default) or identity: the encoding of the publish manifest's objects
 #                       (OpenRA.Web/publish.json, tools/publish.py), for hosts without content negotiation
 #   WEBRA_TARGET        a hosting target: reads OpenRA.Web/hosting/<target>.env (these variables, for one
@@ -488,7 +488,7 @@ if [ -n "${WEBRA_SPLASH:-}" ]; then
 	printf '%s' "${WEBRA_SPLASH}" | grep -Eq '^[a-z0-9-]{1,32}$' || fail "WEBRA_SPLASH must be a plain name: ${WEBRA_SPLASH}"
 	SPLASH_HTML="${SRC_WEB}/hosting/${WEBRA_SPLASH}-splash.html"
 	[ -f "${SPLASH_HTML}" ] || fail "no start screen ${SPLASH_HTML}"
-	WEBRA_SOURCE_URL="${WEBRA_SOURCE_URL:-https://github.com/openra-web/game}"
+	WEBRA_SOURCE_URL="${WEBRA_SOURCE_URL:-https://github.com/lanhouse-playra/game}"
 	printf '%s' "${WEBRA_SOURCE_URL}" | grep -Eq '^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~/-]*)?$' || fail "WEBRA_SOURCE_URL must be a plain https:// URL: ${WEBRA_SOURCE_URL}"
 	SOURCE_COMMIT="${COMMIT%-dirty}"
 	printf '%s' "${SOURCE_COMMIT}" | grep -Eq '^[0-9a-f]{40}$' || fail "the start screen links to the build's commit, and this build has none (${COMMIT})"
