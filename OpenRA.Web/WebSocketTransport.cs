@@ -24,7 +24,7 @@ namespace OpenRA.Web
 	/// Game.WebSocketProxy, which opens a TCP connection to the game server and copies bytes both ways.
 	/// </summary>
 	/// <remarks>
-	/// This uses the page's WebSocket object through JS interop (wwwroot/main.js, module "webra-net")
+	/// This uses the page's WebSocket object through JS interop (wwwroot/main.js, module "playra-net")
 	/// rather than System.Net.WebSockets.ClientWebSocket. In the single-threaded browser runtime the
 	/// completions of ClientWebSocket.ReceiveAsync/SendAsync run as runtime background jobs, which the
 	/// runtime schedules with setTimeout(0) (and SendAsync polls bufferedAmount with setTimeout). Browsers
@@ -35,7 +35,7 @@ namespace OpenRA.Web
 	[SupportedOSPlatform("browser")]
 	public static partial class WebSocketTransport
 	{
-		const string ModuleName = "webra-net";
+		const string ModuleName = "playra-net";
 
 		static readonly Dictionary<int, Socket> Sockets = [];
 

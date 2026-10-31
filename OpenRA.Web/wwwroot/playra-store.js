@@ -5,7 +5,7 @@
 // the License, or (at your option) any later version. For more
 // information, see COPYING.
 
-// Browser storage for OpenRA.Web (an IndexedDB database, "webra" when the page is served at the root of
+// Browser storage for OpenRA.Web (an IndexedDB database, "playra" when the page is served at the root of
 // its site; main.js chooses the name):
 //   content  the game content installed on the first visit (path -> bytes), plus one
 //            "#installed/<mod>" record that describes the installation;
@@ -13,7 +13,7 @@
 //            profile key, replays, downloaded maps, the news cache (path -> { data, mtime }).
 // Without IndexedDB (blocked storage, some private modes) everything still works, in memory only.
 
-const DEFAULT_DB_NAME = 'webra';
+const DEFAULT_DB_NAME = 'playra';
 const DB_VERSION = 1;
 
 const request = req => new Promise((resolve, reject) => {
@@ -47,7 +47,7 @@ export class Store {
 
 			return new Store(await request(req));
 		} catch (e) {
-			console.warn('[webra] IndexedDB is not available, nothing will be saved:', e);
+			console.warn('[playra] IndexedDB is not available, nothing will be saved:', e);
 			return null;
 		}
 	}
@@ -141,7 +141,7 @@ export class SupportSync {
 		} catch (e) {
 			// The store cannot even be read: boot with defaults rather than not at all.
 			this.stats.lastError = String(e);
-			console.warn('[webra] reading the saved support directory failed; starting without it:', e);
+			console.warn('[playra] reading the saved support directory failed; starting without it:', e);
 			this.onError('restore', e);
 			return;
 		}
@@ -166,7 +166,7 @@ export class SupportSync {
 				this.dropped.add(path);
 				// emscripten's FS errors carry a code (ENOTDIR, ...) and no message.
 				this.stats.skipped.push(`${path}: ${e && (e.code || e.message) || e}`);
-				console.warn(`[webra] skipped the saved file ${path}:`, e);
+				console.warn(`[playra] skipped the saved file ${path}:`, e);
 			}
 		}
 	}
@@ -219,7 +219,7 @@ export class SupportSync {
 		this.syncing = this.syncOnce().catch(e => {
 			this.stats.failedSyncs++;
 			this.stats.lastError = String(e);
-			console.warn('[webra] saving the support directory failed:', e);
+			console.warn('[playra] saving the support directory failed:', e);
 			this.onError(isQuotaError(e) ? 'quota' : 'write', e);
 		}).finally(() => {
 			this.syncing = null;
@@ -301,7 +301,7 @@ export class SupportSync {
 			if (batch.length === 1) {
 				this.failed.set(batch[0][0], batch[0][1].mtime);
 				this.stats.failedFiles++;
-				console.warn(`[webra] could not save ${batch[0][0]}:`, e);
+				console.warn(`[playra] could not save ${batch[0][0]}:`, e);
 				return e;
 			}
 		}

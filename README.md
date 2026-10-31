@@ -1,4 +1,4 @@
-# webRA: OpenRA in the browser
+# playRA: OpenRA in the browser
 
 This is stock [OpenRA](https://www.openra.net) (the Red Alert mod, release `playtest-20261026`) compiled to
 WebAssembly so that it runs in a web browser, with nothing to install. Browser players join the regular OpenRA
@@ -12,12 +12,12 @@ player is just one more player in the same lobbies.
 
 ## Credit
 
-webRA was built and funded by Morris Ruschel for lanhouse.app. It was developed with AI assistance: the code was
+playRA was built and funded by Morris Ruschel for lanhouse.app. It was developed with AI assistance: the code was
 written with Claude Code (by Anthropic) under his direction, and the commits carry `Co-Authored-By` lines that say so.
 
 All credit for the game engine and the Red Alert mod belongs to the OpenRA developers and contributors
 ([openra.net](https://www.openra.net), [github.com/OpenRA/OpenRA](https://github.com/OpenRA/OpenRA)). This repository
-is their engine with the changes a browser needs. webRA is not affiliated with or endorsed by the OpenRA team.
+is their engine with the changes a browser needs. playRA is not affiliated with or endorsed by the OpenRA team.
 
 This port is not an upstream contribution. OpenRA's repository does not accept AI-generated contributions (see its
 [AGENTS.md](https://github.com/OpenRA/OpenRA/blob/bleed/AGENTS.md)), and we respect that: the port lives here, as a
@@ -78,13 +78,13 @@ Lua 5.1.5, the OpenRA Eluant sources and emscripten's SDL2 and FreeType ports ar
 on the first run and verified.
 
 ```sh
-WEBRA_TARGET=lanhouse WEBRA_AOT=1 ./build-web.sh   # the build that runs on play.ra.lanhouse.app
+PLAYRA_TARGET=lanhouse PLAYRA_AOT=1 ./build-web.sh   # the build that runs on play.ra.lanhouse.app
 ./build-web.sh serve                               # serve OpenRA.Web/dist/ on http://127.0.0.1:8090/
 ```
 
 An official build (the default) needs a clean git checkout based on the tag `playtest-20261026` and compiles a
-`git archive` of `HEAD`, never the working tree. `WEBRA_DEV=1` builds the working tree with a development version
-that no public server accepts. `WEBRA_TARGET=<name>` reads `OpenRA.Web/hosting/<name>.env` (relay address, content
+`git archive` of `HEAD`, never the working tree. `PLAYRA_DEV=1` builds the working tree with a development version
+that no public server accepts. `PLAYRA_TARGET=<name>` reads `OpenRA.Web/hosting/<name>.env` (relay address, content
 source, page title, start screen); copy `lanhouse.env` to host your own. The header of `build-web.sh` documents every
 variable. AOT compiles one assembly at a time by default, which fits in about 6 GB of memory; an AOT build takes
 around 20 minutes.

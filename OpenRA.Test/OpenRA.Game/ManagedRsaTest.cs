@@ -245,8 +245,8 @@ namespace OpenRA.Test
 				Assert.That(CryptoUtil.PublicKeyFingerprint(key), Is.EqualTo(expected));
 				Assert.That(expected, Has.Length.EqualTo(40));
 
-				// WEBRA_RSA_DUMP_DIR: also write the PEMs there, to check them with other tools (openssl, PHP).
-				var dump = Environment.GetEnvironmentVariable("WEBRA_RSA_DUMP_DIR");
+				// PLAYRA_RSA_DUMP_DIR: also write the PEMs there, to check them with other tools (openssl, PHP).
+				var dump = Environment.GetEnvironmentVariable("PLAYRA_RSA_DUMP_DIR");
 				if (!string.IsNullOrEmpty(dump))
 				{
 					Directory.CreateDirectory(dump);

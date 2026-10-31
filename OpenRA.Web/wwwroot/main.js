@@ -6,43 +6,43 @@
 // information, see COPYING.
 
 // Browser loader for OpenRA.Web. A hosting target's start screen comes first, if the build has one
-// (webra-splash.js); then, in parallel: starts the .NET runtime, downloads the engine data,
+// (playra-splash.js); then, in parallel: starts the .NET runtime, downloads the engine data,
 // and installs the game content (from IndexedDB, or on the first visit from the official OpenRA
 // mirrors through our relay). Then it restores the saved support directory (settings, profile,
-// replays, maps), boots the engine and drives its frame loop. State is exposed on window.WebRA and
+// replays, maps), boots the engine and drives its frame loop. State is exposed on window.PlayRA and
 // body[data-phase] for tests.
 
 import { dotnet } from './_framework/dotnet.js';
-import { Store, SupportSync, resetSavedData } from './webra-store.js';
-import { ensureContent, relayPackageUrl, sitePackageUrl } from './webra-content.js';
-import * as page from './webra-page.js';
-import { showSplash } from './webra-splash.js';
+import { Store, SupportSync, resetSavedData } from './playra-store.js';
+import { ensureContent, relayPackageUrl, sitePackageUrl } from './playra-content.js';
+import * as page from './playra-page.js';
+import { showSplash } from './playra-splash.js';
 
 const params = new URLSearchParams(location.search);
 
 // Every file of the build is addressed relative to the directory this module was loaded from, not to
 // the page's address or the site's root: the same build works at the root of a site and under a path
-// (https://example.org/webra/), and a page address without the trailing slash or with index.html
+// (https://example.org/playra/), and a page address without the trailing slash or with index.html
 // at the end does not change where the files are. Nothing is configured per path; the publisher only
 // has to serve the build's files under one directory.
 const BASE = new URL('./', import.meta.url);
 const at = path => new URL(path, BASE).href;
 
 // IndexedDB is shared by the whole origin, and a game storefront serves several games, possibly several
-// builds of this one, from one origin. A build at the root keeps the name earlier builds used ("webra");
-// a build under a path gets a database of its own ("webra:/webra/"). data/build.json can name one
+// builds of this one, from one origin. A build at the root keeps the name earlier builds used ("playra");
+// a build under a path gets a database of its own ("playra:/playra/"). data/build.json can name one
 // ("storage"), e.g. to keep the players' saved data when the path changes.
-const storageNameFor = build => build.storage || (BASE.pathname === '/' ? 'webra' : `webra:${BASE.pathname}`);
+const storageNameFor = build => build.storage || (BASE.pathname === '/' ? 'playra' : `playra:${BASE.pathname}`);
 
 // Debug URL parameters (?arg=, ?mod=, ?rt=, ?env=, ?interp=, ?luatest=, ?proxy=) work only in dev
-// builds (build-web.sh WEBRA_DEV=1, data/build.json "dev": true). On a hosted page a crafted link
+// builds (build-web.sh PLAYRA_DEV=1, data/build.json "dev": true). On a hosted page a crafted link
 // could otherwise join the visitor to any server, change settings or disable the interpreter workaround.
 const DEBUG_PARAMS = ['arg', 'mod', 'rt', 'env', 'interp', 'luatest', 'proxy'];
 let devBuild = false;
 const debugParams = name => devBuild ? params.getAll(name) : [];
 const debugParam = name => devBuild ? params.get(name) : null;
 const canvas = document.getElementById('canvas');
-// The start screen, in builds with one (build-web.sh WEBRA_SPLASH).
+// The start screen, in builds with one (build-web.sh PLAYRA_SPLASH).
 const splash = document.getElementById('splash');
 const ui = {
 	step: document.getElementById('step'),
@@ -59,7 +59,7 @@ const ui = {
 	noticeClose: document.getElementById('notice-close'),
 };
 
-const WebRA = window.WebRA = {
+const PlayRA = window.PlayRA = {
 	phase: 'loading',
 	timings: {},
 	load: {},
@@ -67,23 +67,23 @@ const WebRA = window.WebRA = {
 	notices: [],
 	downloads: [],
 	host: null,
-	diagnostics: (reset = false) => WebRA.host ? JSON.parse(WebRA.host.Diagnostics(reset)) : null,
+	diagnostics: (reset = false) => PlayRA.host ? JSON.parse(PlayRA.host.Diagnostics(reset)) : null,
 };
 
 const t0 = performance.now();
 const now = () => Math.round(performance.now() - t0);
 function setPhase(phase, detail) {
-	WebRA.phase = phase;
-	WebRA.timings[phase] = now();
+	PlayRA.phase = phase;
+	PlayRA.timings[phase] = now();
 	document.body.dataset.phase = phase;
 	if (detail)
 		ui.step.textContent = detail;
-	console.log(`[webra] ${phase} at ${WebRA.timings[phase]} ms${detail ? ': ' + detail : ''}`);
+	console.log(`[playra] ${phase} at ${PlayRA.timings[phase]} ms${detail ? ': ' + detail : ''}`);
 }
 
 function fail(error) {
-	console.error('[webra] fatal', error);
-	WebRA.errors.push(String(error && error.stack || error));
+	console.error('[playra] fatal', error);
+	PlayRA.errors.push(String(error && error.stack || error));
 	setPhase('error');
 	ui.error.textContent = String(error && error.message || error);
 }
@@ -92,11 +92,11 @@ function fail(error) {
 // clock blocked). Each text is shown once per page load, unless `always` (an error the engine recovered
 // from, which the player caused again).
 function notify(text, always = false) {
-	if (!always && WebRA.notices.includes(text))
+	if (!always && PlayRA.notices.includes(text))
 		return;
 
-	console.warn(`[webra] notice: ${text}`);
-	WebRA.notices.push(text);
+	console.warn(`[playra] notice: ${text}`);
+	PlayRA.notices.push(text);
 	ui.noticeText.textContent = text;
 	ui.notice.hidden = false;
 }
@@ -123,14 +123,14 @@ async function resetSaved() {
 	if (!confirm('Delete the settings, player profile, replays and downloaded maps this site saved in this browser? The game content stays.'))
 		return;
 
-	if (WebRA.support)
-		WebRA.support.stop();
+	if (PlayRA.support)
+		PlayRA.support.stop();
 
 	try {
-		await resetSavedData(WebRA.storageName || storageNameFor(WebRA.build || {}));
-		WebRA.resetDone = true;
+		await resetSavedData(PlayRA.storageName || storageNameFor(PlayRA.build || {}));
+		PlayRA.resetDone = true;
 	} catch (e) {
-		WebRA.errors.push(`reset: ${e}`);
+		PlayRA.errors.push(`reset: ${e}`);
 		alert(`Resetting the saved data failed: ${e && e.message || e}. Clear this site's data in the browser settings instead.`);
 		return;
 	}
@@ -143,15 +143,15 @@ async function resetSaved() {
 // If that fails, the storage notice is up and the page stays as it is: a reload would lose the change.
 async function restart() {
 	try {
-		if (!WebRA.support || await WebRA.support.flush()) {
+		if (!PlayRA.support || await PlayRA.support.flush()) {
 			location.reload();
 			return;
 		}
 	} catch (e) {
-		WebRA.errors.push(`restart: ${e}`);
+		PlayRA.errors.push(`restart: ${e}`);
 	}
 
-	console.warn('[webra] restart: the settings could not be saved, so the page was not reloaded');
+	console.warn('[playra] restart: the settings could not be saved, so the page was not reloaded');
 }
 
 // Quit in the game's menu. With a start screen, the page goes back to it: the engine cannot start again
@@ -165,12 +165,12 @@ async function exited() {
 
 	setPhase('exited', 'Returning to the start screen');
 	try {
-		if (!WebRA.support || await WebRA.support.flush()) {
+		if (!PlayRA.support || await PlayRA.support.flush()) {
 			location.reload();
 			return;
 		}
 	} catch (e) {
-		WebRA.errors.push(`quit: ${e}`);
+		PlayRA.errors.push(`quit: ${e}`);
 	}
 
 	ui.step.textContent = 'The game was closed. Reload the page to play again.';
@@ -189,7 +189,7 @@ const nextPaint = () => new Promise(resolve => {
 		if (done)
 			return;
 		done = true;
-		WebRA.load.bootPaint = { how, ms: Math.round(performance.now() - started) };
+		PlayRA.load.bootPaint = { how, ms: Math.round(performance.now() - started) };
 		resolve();
 	};
 
@@ -245,7 +245,7 @@ function relayUrl(build) {
 
 	const url = resolveUrl(value, true);
 	if (!devBuild && !url.startsWith('wss:') && !isLoopback(new URL(url).hostname)) {
-		console.error(`[webra] refusing the unencrypted game relay ${url}; multiplayer is disabled`);
+		console.error(`[playra] refusing the unencrypted game relay ${url}; multiplayer is disabled`);
 		return '';
 	}
 
@@ -315,9 +315,9 @@ function stageFiles(FS, files) {
 
 // The content manifest, downloaded once (the start screen reads it too).
 let contentManifestRequest = null;
-const contentManifest = () => contentManifestRequest ||= fetch(at(WebRA.build.contentManifest), { cache: 'no-cache' }).then(r => {
+const contentManifest = () => contentManifestRequest ||= fetch(at(PlayRA.build.contentManifest), { cache: 'no-cache' }).then(r => {
 	if (!r.ok)
-		throw new Error(`Failed to download ${WebRA.build.contentManifest}: ${r.status}`);
+		throw new Error(`Failed to download ${PlayRA.build.contentManifest}: ${r.status}`);
 	return r.json();
 });
 
@@ -328,7 +328,7 @@ async function loadContent(build, store) {
 	if (build.content) {
 		const bundle = await fetchBundle(at('data/content'), (received, total) =>
 			progress.set('content', 'Game content (local test build)', received, total));
-		WebRA.load.content = { source: 'bundle', ms: now() - started };
+		PlayRA.load.content = { source: 'bundle', ms: now() - started };
 		return { bundle };
 	}
 
@@ -351,12 +351,12 @@ async function loadContent(build, store) {
 	if (result.source === 'cache')
 		progress.set('content', 'Game content: saved in this browser', 0, 0);
 
-	WebRA.load.content = { source: result.source, bytes: result.bytes, downloaded: result.downloaded, mirrors: result.mirrors, ms: now() - started };
+	PlayRA.load.content = { source: result.source, bytes: result.bytes, downloaded: result.downloaded, mirrors: result.mirrors, ms: now() - started };
 
 	// Chromium grants persistent storage silently to engaged sites; Firefox would ask the player,
 	// so it is not requested there.
 	if (result.source === 'download' && navigator.storage && navigator.storage.persist && !/Firefox\//.test(navigator.userAgent))
-		navigator.storage.persist().then(granted => WebRA.load.persisted = granted).catch(() => {});
+		navigator.storage.persist().then(granted => PlayRA.load.persisted = granted).catch(() => {});
 
 	return { files: result.files };
 }
@@ -452,8 +452,8 @@ function createWorkerClock(onTick) {
 	const useFallback = reason => {
 		if (fallback)
 			return;
-		console.warn(`[webra] clock worker unavailable (${reason}); hidden tabs and logic frames use a main-thread timer, which browsers throttle in hidden tabs`);
-		WebRA.clockFallback = String(reason);
+		console.warn(`[playra] clock worker unavailable (${reason}); hidden tabs and logic frames use a main-thread timer, which browsers throttle in hidden tabs`);
+		PlayRA.clockFallback = String(reason);
 		notify(NOTICES.clock);
 		fallback = createTimerClock(onTick);
 		if (running)
@@ -509,7 +509,7 @@ function createWorkerClock(onTick) {
 function startFrameLoop(host, onExit) {
 	let stopped = false;
 	let rafPending = false;
-	const stats = WebRA.frameStats = { visibleFrames: 0, logicFrames: 0, skippedLogicFrames: 0, hiddenFrames: 0, visibilityChanges: 0 };
+	const stats = PlayRA.frameStats = { visibleFrames: 0, logicFrames: 0, skippedLogicFrames: 0, hiddenFrames: 0, visibilityChanges: 0 };
 	let lastLogicFrameEnd = -Infinity;
 
 	// render: true (animation frame), false (hidden page), 'logic' (visible page, between animation frames)
@@ -540,7 +540,7 @@ function startFrameLoop(host, onExit) {
 		requestFrame();
 	};
 
-	const clock = WebRA.clock = createWorkerClock(() => {
+	const clock = PlayRA.clock = createWorkerClock(() => {
 		// Messages still queued from before a visibility change run as the new state's frame kind.
 		if (document.hidden) {
 			stats.hiddenFrames++;
@@ -670,7 +670,7 @@ const MAP_DOWNLOAD_ATTEMPTS = 3;
 const MAP_RETRY_INTERVAL_MS = 60000;
 
 async function loadDeferredMaps(prefix, FS, host, sleep) {
-	const state = WebRA.maps = { state: 'downloading', received: 0, total: 0, maps: 0, loaded: 0, startedMs: now() };
+	const state = PlayRA.maps = { state: 'downloading', received: 0, total: 0, maps: 0, loaded: 0, startedMs: now() };
 	const inMatch = () => {
 		try {
 			return host.WorldType() === 'Regular';
@@ -700,10 +700,10 @@ async function loadDeferredMaps(prefix, FS, host, sleep) {
 		// the file system holds its own copy.
 		let files = null;
 		for (let attempt = 1; !files;) {
-			if (WebRA.phase !== 'running')
+			if (PlayRA.phase !== 'running')
 				return;
 			while (inMatch()) {
-				if (WebRA.phase !== 'running')
+				if (PlayRA.phase !== 'running')
 					return;
 				await sleep(1000);
 			}
@@ -734,8 +734,8 @@ async function loadDeferredMaps(prefix, FS, host, sleep) {
 					continue;
 				}
 
-				WebRA.errors.push(`maps (attempt ${attempt}): ${e && e.message || e}`);
-				console.warn(`[webra] maps download attempt ${attempt} failed:`, e);
+				PlayRA.errors.push(`maps (attempt ${attempt}): ${e && e.message || e}`);
+				console.warn(`[playra] maps download attempt ${attempt} failed:`, e);
 				if (attempt === MAP_DOWNLOAD_ATTEMPTS)
 					notify(NOTICES.maps);
 				const delay = attempt < MAP_DOWNLOAD_ATTEMPTS ? 5000 * attempt : MAP_RETRY_INTERVAL_MS;
@@ -785,7 +785,7 @@ async function loadDeferredMaps(prefix, FS, host, sleep) {
 		state.state = 'loading';
 		let pending = state.maps;
 		while (pending > 0) {
-			if (WebRA.phase !== 'running')
+			if (PlayRA.phase !== 'running')
 				return;
 
 			if (inMatch()) {
@@ -802,11 +802,11 @@ async function loadDeferredMaps(prefix, FS, host, sleep) {
 		state.state = 'ready';
 		state.readyMs = now();
 		dismiss(NOTICES.maps);
-		console.log(`[webra] ${state.maps} maps added: downloaded at ${state.downloadedMs} ms, ready at ${state.readyMs} ms`);
+		console.log(`[playra] ${state.maps} maps added: downloaded at ${state.downloadedMs} ms, ready at ${state.readyMs} ms`);
 	} catch (e) {
 		state.state = 'failed';
 		state.error = String(e && e.message || e);
-		console.error('[webra] maps', e);
+		console.error('[playra] maps', e);
 		notify(NOTICES.mapsBroken);
 	} finally {
 		clearInterval(statusTimer);
@@ -825,7 +825,7 @@ function watchFullscreenButton() {
 	const update = () => {
 		let inMatch = false;
 		try {
-			inMatch = WebRA.host.WorldType() === 'Regular';
+			inMatch = PlayRA.host.WorldType() === 'Regular';
 		} catch {
 			// Not booted yet.
 		}
@@ -850,13 +850,13 @@ async function main() {
 		ui.notice.hidden = true;
 	});
 
-	const build = WebRA.build = await fetch(at('data/build.json'), { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+	const build = PlayRA.build = await fetch(at('data/build.json'), { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
 	devBuild = build.dev === true;
-	const storageName = WebRA.storageName = storageNameFor(build);
+	const storageName = PlayRA.storageName = storageNameFor(build);
 	if (build.contentUrl)
 		ui.note.textContent = 'First visit: the original Red Alert game files (freeware), about 13 MB, are downloaded from this site and kept in this browser, so later visits start without downloading them again.';
 	if (!devBuild && [...params.keys()].some(k => DEBUG_PARAMS.includes(k)))
-		console.warn('[webra] debug URL parameters are ignored: this is not a dev build');
+		console.warn('[playra] debug URL parameters are ignored: this is not a dev build');
 
 	// Browser integration that must be in place before the runtime starts (the audio context is
 	// created during boot, the version check and news requests soon after).
@@ -864,15 +864,15 @@ async function main() {
 	page.keepPageTitle();
 	page.routeMasterRequests(build.masterRelay ? resolveUrl(build.masterRelay) : '');
 	page.suppressBrowserUi(canvas);
-	page.captureKeys({ isActive: () => WebRA.phase === 'running', keepDevTools: devBuild });
-	page.clampMouseAtEdges(canvas, () => WebRA.phase === 'running');
+	page.captureKeys({ isActive: () => PlayRA.phase === 'running', keepDevTools: devBuild });
+	page.clampMouseAtEdges(canvas, () => PlayRA.phase === 'running');
 
 	const proxy = relayUrl(build);
 	const storePromise = Store.open(storageName);
 	if (splash) {
-		WebRA.splash = {};
-		const choice = await showSplash(splash, { build, at, storePromise, contentManifest, state: WebRA.splash });
-		WebRA.splash.fullscreen = choice.fullscreen;
+		PlayRA.splash = {};
+		const choice = await showSplash(splash, { build, at, storePromise, contentManifest, state: PlayRA.splash });
+		PlayRA.splash.fullscreen = choice.fullscreen;
 		setPhase('loading', 'Starting');
 	}
 
@@ -887,7 +887,7 @@ async function main() {
 				progress.set('framework', 'Game engine', Math.round((total ? loaded / total : 0) * frameworkBytes), frameworkBytes),
 		})
 		// The loader would fetch every resource with cache: 'no-cache' (a revalidation per file per
-		// visit). The _framework files are fingerprinted and served as immutable (deploy/webra.caddy),
+		// visit). The _framework files are fingerprinted and served as immutable (deploy/playra.caddy),
 		// and the unfingerprinted dotnet.js is revalidated by its own Cache-Control header.
 		.withConfig({ disableNoCacheFetch: true })
 		.withRuntimeOptions(debugParams('rt'))
@@ -908,13 +908,13 @@ async function main() {
 	const mapsAtBoot = Boolean(build.mapData) && debugParams('arg').some(a => a.startsWith('Launch.Replay='));
 	const [runtime, engine, content, store, mapsBundle] = await Promise.all([
 		builder.create().then(r => {
-			WebRA.load.frameworkMs = now();
+			PlayRA.load.frameworkMs = now();
 			progress.set('framework', 'Game engine', frameworkBytes, frameworkBytes);
 			return r;
 		}),
 		fetchBundle(at(build.engineData || 'data/engine'), (received, total) =>
 			progress.set('engine', 'Engine data', received, total)).then(b => {
-			WebRA.load.engineMs = now();
+			PlayRA.load.engineMs = now();
 			return b;
 		}),
 		storePromise.then(s => loadContent(build, s)),
@@ -926,18 +926,18 @@ async function main() {
 		throw new Error('Engine data is missing.');
 
 	const { Module, getAssemblyExports, setModuleImports } = runtime;
-	WebRA.runtime = runtime;
+	PlayRA.runtime = runtime;
 	let transport = null;
 	const net = createNetModule(() => transport);
-	setModuleImports('webra-net', net);
+	setModuleImports('playra-net', net);
 	// The engine shows errors it recovered from (a UI action that failed) as a notice, asks for a
 	// restart ("Restart Now" in its settings) through restart() and copies the forum key with copyText().
-	setModuleImports('webra-page', {
+	setModuleImports('playra-page', {
 		notify: text => notify(text, true),
 		restart: () => restart(),
 		copyText: text => page.copyText(text, canvas),
 	});
-	page.guardLeaving(() => net.openCount() > 0 && WebRA.phase !== 'exited');
+	page.guardLeaving(() => net.openCount() > 0 && PlayRA.phase !== 'exited');
 
 	setPhase('staging', 'Installing');
 	const FS = Module.FS;
@@ -948,28 +948,28 @@ async function main() {
 	if (mapsBundle)
 		staged += stageBundle(FS, mapsBundle);
 
-	const support = WebRA.support = new SupportSync(FS, store, { onError: kind => notify(NOTICES[kind] || NOTICES.write) });
+	const support = PlayRA.support = new SupportSync(FS, store, { onError: kind => notify(NOTICES[kind] || NOTICES.write) });
 	await support.restore();
 	if (support.stats.skipped.length)
 		notify(NOTICES.skipped);
-	WebRA.stagedFiles = staged;
-	WebRA.load.restoredSupportFiles = support.stats.restoredFiles;
+	PlayRA.stagedFiles = staged;
+	PlayRA.load.restoredSupportFiles = support.stats.restoredFiles;
 	// After the restore: the files restored from IndexedDB are not new.
-	page.downloadSavedFiles(FS, SAVED_FOR_PLAYER, WebRA.downloads);
+	page.downloadSavedFiles(FS, SAVED_FOR_PLAYER, PlayRA.downloads);
 
 	const exports = await getAssemblyExports('OpenRA.Web');
 	const host = exports.OpenRA && exports.OpenRA.Web && exports.OpenRA.Web.WebHost;
 	if (!host)
 		throw new Error(`OpenRA.Web exports not found (have: ${Object.keys(exports).join(', ')})`);
 
-	WebRA.exports = host;
-	WebRA.allExports = exports;
+	PlayRA.exports = host;
+	PlayRA.allExports = exports;
 	transport = exports.OpenRA.Web.WebSocketTransport;
-	WebRA.net = exports.OpenRA.Web.NetDiagnostics;
-	WebRA.netStatus = () => JSON.parse(WebRA.net.Status());
+	PlayRA.net = exports.OpenRA.Web.NetDiagnostics;
+	PlayRA.netStatus = () => JSON.parse(PlayRA.net.Status());
 	if (debugParam('luatest') !== null) {
 		const r = exports.OpenRA.Web.LuaSelfTest.Run(Number(debugParam('luatest')) || 3);
-		console.log('[webra] lua self-test:\n' + r);
+		console.log('[playra] lua self-test:\n' + r);
 	}
 
 	setPhase('booting', 'Starting the game (the page does not respond for a few seconds)');
@@ -978,10 +978,10 @@ async function main() {
 	// the player chose it). ?w= and ?h= (render size for tests) are clamped: a crafted link must not
 	// make the tab allocate a huge canvas.
 	const sizeParam = name => Math.min(4096, Number(params.get(name)) || 0);
-	const size = WebRA.renderSize = page.renderSize(sizeParam('w') || window.innerWidth, sizeParam('h') || window.innerHeight);
+	const size = PlayRA.renderSize = page.renderSize(sizeParam('w') || window.innerWidth, sizeParam('h') || window.innerHeight);
 	page.fitCanvas(canvas, size);
 	host.Boot(bootArguments(size, proxy));
-	WebRA.host = host;
+	PlayRA.host = host;
 
 	// Settings, profile, replays and maps are saved from now on.
 	support.start();
@@ -995,9 +995,9 @@ async function main() {
 		loadDeferredMaps(at(build.mapData), FS, host, sleep);
 }
 
-// Content-Security-Policy violations (deploy/webra.caddy) are recorded for tests and bug reports.
-document.addEventListener('securitypolicyviolation', e => WebRA.errors.push(`CSP: ${e.violatedDirective} blocked ${e.blockedURI}`));
-window.addEventListener('error', e => WebRA.errors.push(String(e.error && e.error.stack || e.message)));
-window.addEventListener('unhandledrejection', e => WebRA.errors.push(String(e.reason && e.reason.stack || e.reason)));
+// Content-Security-Policy violations (deploy/playra.caddy) are recorded for tests and bug reports.
+document.addEventListener('securitypolicyviolation', e => PlayRA.errors.push(`CSP: ${e.violatedDirective} blocked ${e.blockedURI}`));
+window.addEventListener('error', e => PlayRA.errors.push(String(e.error && e.error.stack || e.message)));
+window.addEventListener('unhandledrejection', e => PlayRA.errors.push(String(e.reason && e.reason.stack || e.reason)));
 
 main().catch(fail);

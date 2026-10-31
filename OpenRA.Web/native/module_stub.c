@@ -14,4 +14,4 @@
  * freetype6.a and soft_oal.a purely to register those module names.
  */
 
-int WEBRA_STUB_SYMBOL(void) { return 0; }
+int PLAYRA_STUB_SYMBOL(void) { return 0; }

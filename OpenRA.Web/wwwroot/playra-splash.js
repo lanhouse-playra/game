@@ -5,14 +5,14 @@
 // the License, or (at your option) any later version. For more
 // information, see COPYING.
 
-// The start screen of a hosting target (build-web.sh WEBRA_SPLASH puts its markup into index.html): two
+// The start screen of a hosting target (build-web.sh PLAYRA_SPLASH puts its markup into index.html): two
 // buttons, windowed and fullscreen, and nothing is downloaded until one is clicked. It also says how much
 // a first visit downloads, or that everything is already in this browser, and replaces the buttons with
 // an explanation when the browser has no WebGL 2. Its texts are in the markup (data-* attributes for
 // the ones chosen here), so the target's language stays in the target's file.
 
-import { contentStored } from './webra-content.js';
-import * as page from './webra-page.js';
+import { contentStored } from './playra-content.js';
+import * as page from './playra-page.js';
 
 // The engine renders with WebGL 2 (OpenGL ES 3.0). A context made on a canvas of its own and released
 // at once: the game canvas must get its context from SDL, with SDL's attributes.

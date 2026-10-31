@@ -72,7 +72,7 @@ async function download(url, onProgress, cache) {
 			}
 
 			const total = Number(response.headers.get('content-length')) || 0;
-			const mirror = response.headers.get('x-webra-mirror') || '';
+			const mirror = response.headers.get('x-playra-mirror') || '';
 			const reader = response.body.getReader();
 			const chunks = [];
 			let received = 0;
@@ -99,7 +99,7 @@ async function download(url, onProgress, cache) {
 			return { data, mirror };
 		} catch (e) {
 			lastError = e;
-			console.warn(`[webra] content download attempt ${attempt} failed:`, e);
+			console.warn(`[playra] content download attempt ${attempt} failed:`, e);
 			if (e instanceof RelayRefusal && !e.retry)
 				break;
 			if (attempt < 3)
@@ -185,7 +185,7 @@ async function unzip(data, wanted) {
 export const relayPackageUrl = relayBase => (manifest, pkg) =>
 	`${relayBase.replace(/\/$/, '')}/${encodeURIComponent(manifest.mod)}/${encodeURIComponent(pkg.id)}`;
 
-// A copy on our own site: <base>/<file>, e.g. https://host/webra/content/ra-quickinstall.<sha1>.zip. The
+// A copy on our own site: <base>/<file>, e.g. https://host/playra/content/ra-quickinstall.<sha1>.zip. The
 // manifest names the file (content-manifest.py), so the page and tools/fetch-content.py agree on it.
 export const sitePackageUrl = base => (manifest, pkg) => {
 	if (!pkg.file)
@@ -226,10 +226,10 @@ export async function ensureContent({ manifest, store, packageUrl, cache = 'no-s
 				const files = new Map(await store.entries('content', '/'));
 				if (required.every(f => files.has(f)))
 					return { files, source: 'cache', bytes: meta.bytes, installedAt: meta.at };
-				console.warn('[webra] the stored content is incomplete, downloading it again');
+				console.warn('[playra] the stored content is incomplete, downloading it again');
 			}
 		} catch (e) {
-			console.warn('[webra] reading the stored content failed, downloading it again:', e);
+			console.warn('[playra] reading the stored content failed, downloading it again:', e);
 		}
 	}
 
@@ -246,7 +246,7 @@ export async function ensureContent({ manifest, store, packageUrl, cache = 'no-s
 		let { data, mirror } = await download(url, progress, cache);
 		let hash = await sha1Hex(data);
 		if (hash !== pkg.sha1 && cache !== 'no-store' && cache !== 'reload') {
-			console.warn(`[webra] ${pkg.title}: SHA1 ${hash} does not match ${pkg.sha1}, downloading it again past the HTTP cache`);
+			console.warn(`[playra] ${pkg.title}: SHA1 ${hash} does not match ${pkg.sha1}, downloading it again past the HTTP cache`);
 			({ data, mirror } = await download(url, progress, 'reload'));
 			hash = await sha1Hex(data);
 		}
@@ -272,7 +272,7 @@ export async function ensureContent({ manifest, store, packageUrl, cache = 'no-s
 			await store.write('content', [...files, [metaKey, { id, bytes, downloaded, mirrors, at: Date.now() }]], [], true);
 		} catch (e) {
 			// Quota or private mode: the game still runs, the next visit downloads again.
-			console.warn('[webra] could not store the game content:', e);
+			console.warn('[playra] could not store the game content:', e);
 		}
 	}
 
