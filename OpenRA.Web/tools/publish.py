@@ -332,7 +332,7 @@ def framework_first_visit(resources):
 
 def first_visit(dist, encoding):
     """What a first visit transfers, in the bytes the publish uploads (the brotli copies with --encoding br):
-    the page and its modules, the icon the page links first, build.json, the content manifest, the .NET
+    the page and its modules, the icon the page links first, the start screen's logo, build.json, the content manifest, the .NET
     runtime and assemblies, the engine data and the game content (a local test bundle, or the packages of
     the content plan, downloaded from our site or through the relay), and the maps package, which the page
     downloads right after the main menu is up. Not counted: HTTP headers. "cached" lists the content-addressed files
@@ -341,6 +341,8 @@ def first_visit(dist, encoding):
     language uses."""
     build = load_build(dist)
     keys = ["index.html", "favicon.svg"]
+    # The start screen's logo (build-web.sh WEBRA_SPLASH), shown with the page.
+    keys += [n for n in ("splash-logo.svg", "splash-logo.png") if os.path.isfile(os.path.join(dist, n))]
     keys += sorted(n for n in os.listdir(dist) if n.endswith(".js") and os.path.isfile(os.path.join(dist, n)))
     keys += ["data/build.json", build.get("contentManifest") or "data/content-packages.json"]
     engine = build.get("engineData")
