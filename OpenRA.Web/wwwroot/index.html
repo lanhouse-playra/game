@@ -7,6 +7,13 @@
 	<link rel="icon" href="favicon.svg" type="image/svg+xml">
 	<link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
 	<link rel="apple-touch-icon" href="apple-touch-icon.png">
+	<!-- Installable as an app (Add to Home Screen): iPhone has no fullscreen for pages, an app started from the
+	     home screen runs without the browser's bars. The manifest is written by build-web.sh. -->
+	<link rel="manifest" href="manifest.webmanifest">
+	<meta name="mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+	<meta name="apple-mobile-web-app-title" content="OpenRA">
 	<style>
 		html, body { margin: 0; height: 100%; background: #000; color: #ccc; font: 15px/1.4 system-ui, sans-serif; overflow: hidden; }
 		body { display: flex; align-items: center; justify-content: center; }

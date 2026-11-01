@@ -52,7 +52,8 @@ The manifest is all an uploader needs; it never decides a header itself:
     redirects         [{from, to, status, when}] ("<base without the slash>" -> "<base>", only when the base
                       is a path, not the root)
   neverImmutable    the keys that must never be cached as immutable (they keep their names from build to
-                    build: the page, its scripts, dotnet.js, build.json, the content manifest, the icons)
+                    build: the page, its scripts, dotnet.js, build.json, the content manifest, the web
+                    app manifest, the icons)
 
 Encodings: --encoding br (the default) uploads brotli copies of every compressible file that brotli
 makes at least 5 % smaller (the .NET SDK writes them for _framework and the page's files, build-web.sh
@@ -84,6 +85,7 @@ CONTENT_TYPES = {
     ".svg": "image/svg+xml",
     ".png": "image/png",
     ".ico": "image/x-icon",
+    ".webmanifest": "application/manifest+json",
 }
 
 COMPRESSIBLE = {".html", ".js", ".json", ".wasm", ".dat", ".bin", ".svg"}
@@ -94,7 +96,7 @@ CACHE_REVALIDATE = "no-cache"
 # The page icons keep their names from build to build (browsers ask for /favicon.ico by that name), so they
 # cannot be immutable. Nothing depends on their bytes matching the rest of the build, and a stale icon
 # for a day after a change is harmless, so they get a day instead of a revalidation on every visit.
-ICONS = re.compile(r"^(favicon\.(svg|ico)|favicon-[0-9]+\.png|apple-touch-icon\.png)$")
+ICONS = re.compile(r"^(favicon\.(svg|ico)|favicon-[0-9]+\.png|apple-touch-icon\.png|icon(-maskable)?-[0-9]+\.png)$")
 CACHE_ICON = "public, max-age=86400"
 
 # Hosts the engine itself talks to: the server list, the resource center (maps), mod metadata and
