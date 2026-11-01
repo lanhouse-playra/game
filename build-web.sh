@@ -344,10 +344,42 @@ cp -a "${PUBLISH}/wwwroot/." "${DIST}/"
 # The page icons (OpenRA.Web/icons), the Red Alert icon of packaging/artwork: favicon.svg is ra_scalable.svg without
 # the editor's metadata, favicon-32.png and favicon.ico (16, 32, 48) are the PNGs drawn for those sizes, and
 # apple-touch-icon.png is a 180 px render on a dark grey tile. favicon.ico sits at the root of the build because
-# browsers ask for /favicon.ico on their own; the others are named by index.html. Fixed names: tools/publish.py
-# gives them a one-day Cache-Control.
+# browsers ask for /favicon.ico on their own; the others are named by index.html, and icon-*.png by the web app
+# manifest (below). Fixed names: tools/publish.py gives them a one-day Cache-Control.
 cp "${SRC_WEB}/icons/favicon.svg" "${SRC_WEB}/icons/favicon-32.png" "${SRC_WEB}/icons/favicon.ico" \
-	"${SRC_WEB}/icons/apple-touch-icon.png" "${DIST}/"
+	"${SRC_WEB}/icons/apple-touch-icon.png" "${SRC_WEB}/icons/icon-192.png" "${SRC_WEB}/icons/icon-512.png" \
+	"${SRC_WEB}/icons/icon-maskable-512.png" "${DIST}/"
+
+# The web app manifest, which makes the page installable as an app (Add to Home Screen; on iPhone, the only
+# way to get the whole screen, since pages there cannot go fullscreen). Named by index.html. Its name is the
+# page title (PLAYRA_PAGE_TITLE), the name under the icon is "OpenRA". Every address in it is relative to the
+# manifest, so the same build works at the root of a site or under a path. Display: fullscreen, standalone
+# where a browser has no fullscreen apps (iOS). Orientation is left to the device. The colours are the start
+# screen's ground. icon-192.png and icon-512.png are the Red Alert star on the tile of apple-touch-icon.png
+# (82 % of the tile); icon-maskable-512.png has it at 70 %, inside the circle of 80 % that every launcher mask keeps.
+python3 -I - "${DIST}/manifest.webmanifest" "${PLAYRA_PAGE_TITLE:-OpenRA}" << 'PY'
+import json, sys
+path, name = sys.argv[1], sys.argv[2]
+manifest = {
+    "name": name,
+    "short_name": "OpenRA",
+    "id": "./",
+    "start_url": "./",
+    "scope": "./",
+    "display": "fullscreen",
+    "display_override": ["fullscreen", "standalone"],
+    "background_color": "#0b0b0b",
+    "theme_color": "#0b0b0b",
+    "icons": [
+        {"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+        {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+        {"src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+    ],
+}
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(manifest, f, indent="\t", ensure_ascii=False)
+    f.write("\n")
+PY
 
 ENGINE_STAGE="${OBJ}/stage/engine"
 rm -rf "${ENGINE_STAGE}"
