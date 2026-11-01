@@ -814,8 +814,8 @@ async function loadDeferredMaps(prefix, FS, host, sleep) {
 	}
 }
 
-// The fullscreen button shows outside matches (menus, lobby) while not in fullscreen. In a match:
-// Alt+Enter, or the browser's own fullscreen.
+// The fullscreen button shows outside matches (menus, lobby) while not in fullscreen, where the browser
+// has fullscreen for pages (not on iPhone). In a match: Alt+Enter, or the browser's own fullscreen.
 function watchFullscreenButton() {
 	ui.fullscreen.addEventListener('click', () => {
 		page.toggleFullscreen();
@@ -830,7 +830,7 @@ function watchFullscreenButton() {
 			// Not booted yet.
 		}
 
-		ui.fullscreen.hidden = page.isFullscreen() || inMatch;
+		ui.fullscreen.hidden = !page.fullscreenSupported() || page.isFullscreen() || inMatch;
 	};
 
 	setInterval(update, 1000);
