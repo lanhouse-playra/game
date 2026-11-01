@@ -150,6 +150,44 @@ namespace OpenRA
 			}
 		}
 
+		// The page's on-screen keyboard support (OpenRA.Web/TextInput.cs). A phone shows its keyboard only when the
+		// page focuses a text input of its own while it handles the tap, before the frame that would deliver the tap
+		// to the game; and what the player types on it arrives as browser input events, not as SDL text or keys.
+
+		/// <summary>
+		/// Delivers the input SDL has queued now, exactly as the next render frame would, instead of leaving it
+		/// to that frame. The page calls this while it handles a tap, to learn whether the tap focused a text field.
+		/// Returns false (and leaves the input queued) when the game is not running a world.
+		/// </summary>
+		public static bool BrowserPumpInput()
+		{
+			if (!browserInitialized || state != RunStatus.Running || OrderManager?.World == null || Renderer.WindowIsSuspended)
+				return false;
+
+			Renderer.Window.PumpInput(new BrowserInputHandler(OrderManager.World));
+			return true;
+		}
+
+		/// <summary>Delivers text typed into the page's keyboard input, after the input SDL has queued before it.</summary>
+		public static void BrowserTextInput(string text)
+		{
+			if (BrowserPumpInput())
+				new BrowserInputHandler(OrderManager.World).OnTextInput(text);
+		}
+
+		/// <summary>Delivers a key pressed in the page's keyboard input (down, then up), after the input SDL has queued before it.</summary>
+		public static void BrowserKeyInput(Keycode key, Modifiers modifiers)
+		{
+			if (!BrowserPumpInput())
+				return;
+
+			var handler = new BrowserInputHandler(OrderManager.World);
+			var input = new KeyInput { Event = KeyInputEvent.Down, Key = key, Modifiers = modifiers, MultiTapCount = 1, UnicodeChar = (char)key };
+			handler.OnKeyInput(input);
+			input.Event = KeyInputEvent.Up;
+			handler.OnKeyInput(input);
+		}
+
 		static void BrowserUiActionFailed(Exception e)
 		{
 			BrowserUiActionsFailed++;

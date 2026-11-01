@@ -17,6 +17,7 @@ import { Store, SupportSync, resetSavedData } from './playra-store.js';
 import { ensureContent, relayPackageUrl, sitePackageUrl } from './playra-content.js';
 import * as page from './playra-page.js';
 import { showSplash } from './playra-splash.js';
+import { installKeyboard } from './playra-keyboard.js';
 
 const params = new URLSearchParams(location.search);
 
@@ -980,7 +981,8 @@ async function main() {
 	const sizeParam = name => Math.min(4096, Number(params.get(name)) || 0);
 	const area = page.safeArea();
 	const size = PlayRA.renderSize = page.renderSize(sizeParam('w') || area.width, sizeParam('h') || area.height);
-	page.fitCanvas(canvas, size);
+	let keyboard = null;
+	const refit = page.fitCanvas(canvas, size, { hold: () => keyboard !== null && keyboard.holdsViewport() });
 	host.Boot(bootArguments(size, proxy));
 	PlayRA.host = host;
 
@@ -990,6 +992,8 @@ async function main() {
 
 	setPhase('running');
 	canvas.focus();
+	// The on-screen keyboard of phones and tablets for the game's text fields (after Boot, which set up SDL's input).
+	keyboard = PlayRA.keyboard = installKeyboard({ canvas, text: exports.OpenRA.Web.TextInput, size, refit, isActive: () => PlayRA.phase === 'running' });
 	watchFullscreenButton();
 	const { sleep } = startFrameLoop(host, exited);
 	if (build.mapData && !mapsBundle)

@@ -49,10 +49,17 @@ export function safeArea() {
 
 // Fits the canvas into the window's safe area, letterboxed, centred (index.html pads the body by the
 // insets). SDL maps mouse coordinates from the canvas's CSS size to the engine's window size, so input
-// follows the scaling.
-export function fitCanvas(canvas, size) {
+// follows the scaling. While hold() is true (the on-screen keyboard is up, playra-keyboard.js), a window
+// that changed only its height keeps the canvas as it is: a browser that shrinks the window for the
+// keyboard would otherwise shrink the game to the strip above it, and grow it back when it closes.
+export function fitCanvas(canvas, size, { hold = () => false } = {}) {
+	let fittedWidth = null;
 	const fit = () => {
 		const area = safeArea();
+		if (hold() && area.width === fittedWidth)
+			return;
+
+		fittedWidth = area.width;
 		const aspect = size.width / size.height;
 		let w = area.width;
 		let h = w / aspect;
