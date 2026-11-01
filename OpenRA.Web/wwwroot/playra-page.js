@@ -75,6 +75,27 @@ export function isFullscreen() {
 	return !!document.fullscreenElement;
 }
 
+// False where pages cannot go fullscreen at all: iPhone (Safari, and every other iOS browser, which are
+// all WebKit). There a page gets the whole screen only as an app started from the home screen.
+export function fullscreenSupported() {
+	return typeof document.documentElement.requestFullscreen === 'function';
+}
+
+// True when the page runs as an app started from the home screen or installed from its manifest (no
+// browser bars): navigator.standalone on iOS, the manifest's display mode elsewhere.
+export function runningAsApp() {
+	if (navigator.standalone === true)
+		return true;
+
+	const matches = query => !!(window.matchMedia && window.matchMedia(query).matches);
+	return matches('(display-mode: standalone)') || matches('(display-mode: fullscreen)');
+}
+
+// iPhone, iPod touch and iPad (an iPad asks for desktop pages and names itself a Mac with a touch screen).
+export function isAppleMobile() {
+	return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
 // Resolves to true once the page is fullscreen, false if the browser refused or cannot (iPhone Safari
 // has no fullscreen for pages). Must be called inside a user gesture: the request is made before the
 // first await.

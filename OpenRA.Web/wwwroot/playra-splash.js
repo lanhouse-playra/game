@@ -8,8 +8,10 @@
 // The start screen of a hosting target (build-web.sh PLAYRA_SPLASH puts its markup into index.html): two
 // buttons, windowed and fullscreen, and nothing is downloaded until one is clicked. It also says how much
 // a first visit downloads, or that everything is already in this browser, and replaces the buttons with
-// an explanation when the browser has no WebGL 2. Its texts are in the markup (data-* attributes for
-// the ones chosen here), so the target's language stays in the target's file.
+// an explanation when the browser has no WebGL 2. Where pages cannot go fullscreen (iPhone), the
+// fullscreen button gives way to how to add the page to the home screen, or goes away when the page
+// already runs from there. Its texts are in the markup (data-* attributes for the ones chosen here), so
+// the target's language stays in the target's file.
 
 import { contentStored } from './playra-content.js';
 import * as page from './playra-page.js';
@@ -88,12 +90,36 @@ function waitForFullscreenSize(maxMs = 1500, settleMs = 250) {
 	});
 }
 
+// What the fullscreen button does: "request" asks the browser for fullscreen (desktop, Android, iPad).
+// Without a Fullscreen API: "app" when the page already has the whole screen, started from the home
+// screen (the button goes away), "hint" on an iPhone in the browser (the button gives way to how to add
+// the page to the home screen), "none" in any other browser without it (the button stays and starts the
+// game in the window, as before).
+export function fullscreenChoice() {
+	if (page.fullscreenSupported())
+		return 'request';
+
+	if (page.runningAsApp())
+		return 'app';
+
+	return page.isAppleMobile() ? 'hint' : 'none';
+}
+
 // Shows the start screen and resolves once the player chose how to play: { fullscreen: true } when the
 // page went fullscreen. A refused fullscreen request starts the game in the window. state (for tests)
-// gets webgl2, downloaded (null until known) and choice.
+// gets webgl2, fullscreenOption (fullscreenChoice), downloaded (null until known) and choice.
 export function showSplash(root, { build, at, storePromise, contentManifest, state = {} }) {
 	const actions = root.querySelector('#splash-actions');
 	const download = root.querySelector('#splash-download');
+	const fullscreenButton = root.querySelector('#splash-play-fullscreen');
+	const hint = root.querySelector('#splash-fullscreen-hint');
+	state.fullscreenOption = fullscreenChoice();
+	if (state.fullscreenOption === 'app' || (state.fullscreenOption === 'hint' && hint)) {
+		fullscreenButton.hidden = true;
+		if (state.fullscreenOption === 'hint')
+			hint.hidden = false;
+	}
+
 	state.webgl2 = hasWebGL2();
 	state.downloaded = null;
 	if (!state.webgl2) {
@@ -120,7 +146,7 @@ export function showSplash(root, { build, at, storePromise, contentManifest, sta
 			resolve({ fullscreen: false });
 		});
 
-		root.querySelector('#splash-play-fullscreen').addEventListener('click', () => {
+		fullscreenButton.addEventListener('click', () => {
 			if (chosen)
 				return;
 
