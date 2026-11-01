@@ -975,10 +975,11 @@ async function main() {
 	setPhase('booting', 'Starting the game (the page does not respond for a few seconds)');
 	await nextPaint();
 	// The render size is fixed at boot, so it is taken now, from the window as it is (fullscreen when
-	// the player chose it). ?w= and ?h= (render size for tests) are clamped: a crafted link must not
-	// make the tab allocate a huge canvas.
+	// the player chose it; on a phone, the part of it outside the notch and the home indicator). ?w= and
+	// ?h= (render size for tests) are clamped: a crafted link must not make the tab allocate a huge canvas.
 	const sizeParam = name => Math.min(4096, Number(params.get(name)) || 0);
-	const size = PlayRA.renderSize = page.renderSize(sizeParam('w') || window.innerWidth, sizeParam('h') || window.innerHeight);
+	const area = page.safeArea();
+	const size = PlayRA.renderSize = page.renderSize(sizeParam('w') || area.width, sizeParam('h') || area.height);
 	page.fitCanvas(canvas, size);
 	host.Boot(bootArguments(size, proxy));
 	PlayRA.host = host;

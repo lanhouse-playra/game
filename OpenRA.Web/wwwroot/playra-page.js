@@ -24,15 +24,40 @@ export function renderSize(width, height) {
 	return { width: Math.round(width * scale), height: Math.round(height * scale) };
 }
 
-// Fits the canvas into the window, letterboxed, centred. SDL maps mouse coordinates from the
-// canvas's CSS size to the engine's window size, so input follows the scaling.
+// The part of the window the game may use: all of it, except on a phone whose notch, rounded corners or
+// home indicator cover its edges (the page asks for the whole screen with viewport-fit=cover). There the
+// game keeps to the safe area, so that every part of its interface can be tapped. Read from the CSS
+// env(safe-area-inset-*) values, which are 0 everywhere else.
+let insetProbe = null;
+export function safeArea() {
+	if (!insetProbe) {
+		insetProbe = document.createElement('div');
+		insetProbe.style.cssText = 'position: fixed; left: 0; top: 0; width: 0; height: 0; visibility: hidden; pointer-events: none; ' +
+			'padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)';
+		document.body.appendChild(insetProbe);
+	}
+
+	const style = getComputedStyle(insetProbe);
+	const inset = name => parseFloat(style[name]) || 0;
+	const top = inset('paddingTop'), right = inset('paddingRight'), bottom = inset('paddingBottom'), left = inset('paddingLeft');
+	return {
+		width: Math.max(1, window.innerWidth - left - right),
+		height: Math.max(1, window.innerHeight - top - bottom),
+		top, right, bottom, left,
+	};
+}
+
+// Fits the canvas into the window's safe area, letterboxed, centred (index.html pads the body by the
+// insets). SDL maps mouse coordinates from the canvas's CSS size to the engine's window size, so input
+// follows the scaling.
 export function fitCanvas(canvas, size) {
 	const fit = () => {
+		const area = safeArea();
 		const aspect = size.width / size.height;
-		let w = window.innerWidth;
+		let w = area.width;
 		let h = w / aspect;
-		if (h > window.innerHeight) {
-			h = window.innerHeight;
+		if (h > area.height) {
+			h = area.height;
 			w = h * aspect;
 		}
 
