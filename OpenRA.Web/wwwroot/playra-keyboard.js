@@ -21,6 +21,10 @@
 //
 // Only touch starts any of this: with a mouse and a physical keyboard the input is never focused and the game gets
 // its keys from SDL as before.
+//
+// With `debug` (the page's ?debug=keyboard, see playra-keyboard-debug.js) the keyboard also keeps a short trace of what
+// reached the input (keys, beforeinput, input, compositions, focus) and of what the engine did with it, for a phone
+// that has no developer tools to look at. Without it no trace is kept and no extra listener is added.
 
 // Keys passed to the engine instead of being left to the input. Backspace and Delete edit the input and reach the
 // engine through the value change, unless the page stopped their default action (Ctrl+Backspace, see captureKeys).
@@ -29,6 +33,9 @@ const EDIT_KEYS = new Set(['Backspace', 'Delete']);
 
 // Left alone, so that SDL keeps an accurate modifier state.
 const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'AltGraph', 'Meta', 'CapsLock', 'OS']);
+
+// Entries kept in the debug trace.
+const TRACE_LENGTH = 15;
 
 // Fields (by engine widget id) whose Enter key does something other than "done".
 const ENTER_HINTS = { CHAT_TEXTFIELD: 'send', SEARCH_TEXTFIELD: 'search', FILTER_INPUT: 'search', MAPFILTER_INPUT: 'search', FLT_NAME_INPUT: 'search' };
@@ -65,9 +72,20 @@ export function editFor(oldValue, newValue, cursor) {
 	return { right: end - cursor, backspaces: end - prefix, text: newValue.substring(prefix, newValue.length - suffix), cursorAfter: newValue.length - suffix };
 }
 
+// A value as the debug trace shows it: quoted, cut short, and never the text of a password field.
+function shown(value, secret) {
+	if (value === null || value === undefined)
+		return String(value);
+
+	value = String(value);
+	if (secret)
+		value = '*'.repeat(value.length);
+	return JSON.stringify(value.length > 24 ? value.substring(0, 24) + '...' : value);
+}
+
 // canvas: the game's canvas; text: the TextInput exports (OpenRA.Web/TextInput.cs); size: the engine's render size;
-// refit: fits the canvas to the window again; isActive: whether the game is running.
-export function installKeyboard({ canvas, text, size, refit, isActive }) {
+// refit: fits the canvas to the window again; isActive: whether the game is running; debug: keep the trace.
+export function installKeyboard({ canvas, text, size, refit, isActive, debug = false }) {
 	const input = document.createElement('input');
 	input.id = 'keyboard-input';
 	input.type = 'text';
@@ -85,7 +103,20 @@ export function installKeyboard({ canvas, text, size, refit, isActive }) {
 	document.body.appendChild(input);
 
 	const appleMobile = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-	const stats = { taps: 0, opened: 0, closed: 0, typed: 0, keys: 0, backspaces: 0, resyncs: 0, errors: 0 };
+	const stats = { taps: 0, opened: 0, closed: 0, typed: 0, keys: 0, backspaces: 0, resyncs: 0, errors: 0, lastError: '' };
+	const trace = debug ? [] : null;
+	const traceListeners = new Set();
+	const secret = () => input.type === 'password';
+	const note = line => {
+		if (!trace)
+			return;
+
+		trace.push(`${(performance.now() / 1000).toFixed(2)} ${line}`);
+		if (trace.length > TRACE_LENGTH)
+			trace.shift();
+		for (const listener of traceListeners)
+			listener();
+	};
 	let field = null;
 	let value = '';
 	let caret = 0;
@@ -100,7 +131,9 @@ export function installKeyboard({ canvas, text, size, refit, isActive }) {
 			return f();
 		} catch (e) {
 			stats.errors++;
+			stats.lastError = `${what}: ${e && e.message || e}`.substring(0, 200);
 			console.warn(`[playra] keyboard: ${what} failed:`, e);
+			note(`! ${stats.lastError}`);
 			return undefined;
 		}
 	};
@@ -152,8 +185,10 @@ export function installKeyboard({ canvas, text, size, refit, isActive }) {
 		if (!f)
 			return;
 
-		if (f.text !== input.value || f.cursor !== input.selectionStart || f.cursor !== input.selectionEnd)
+		if (f.text !== input.value || f.cursor !== input.selectionStart || f.cursor !== input.selectionEnd) {
 			stats.resyncs++;
+			note(`resync: input ${shown(input.value, secret())}@${input.selectionStart} -> engine ${shown(f.text, secret())}@${f.cursor}`);
+		}
 
 		setValue(f.text, f.cursor);
 	};
@@ -194,12 +229,14 @@ export function installKeyboard({ canvas, text, size, refit, isActive }) {
 		if (!focused()) {
 			input.focus();
 			stats.opened++;
+			note(`open ${f.id || f.kind}: focus ${focused() ? 'ok' : 'FAILED'}, active ${document.activeElement && (document.activeElement.id || document.activeElement.nodeName)}`);
 		}
 
 		watch();
 	};
 
-	const close = () => {
+	const close = reason => {
+		note(`close: ${reason}`);
 		field = null;
 		if (focused())
 			input.blur();
@@ -238,7 +275,7 @@ export function installKeyboard({ canvas, text, size, refit, isActive }) {
 
 			const f = engineField();
 			if (!f) {
-				close();
+				close('engine field lost focus');
 				return;
 			}
 
@@ -267,13 +304,17 @@ export function installKeyboard({ canvas, text, size, refit, isActive }) {
 		stats.taps++;
 		const p = toEngine(start.x, start.y);
 		const f = parseField(call('Tap', () => text.Tap(p.x, p.y)));
+		if (trace && (f || focused()))
+			note(`tap ${p.x},${p.y}: ${f ? `field ${f.id || f.kind} ${shown(f.text, f.kind === 'password')}@${f.cursor}` : 'no field'}`);
 		if (f)
 			open(f);
 		else if (focused())
-			close();
+			close('tap outside the field');
 	};
 
 	const onKeyDown = e => {
+		if (trace)
+			note(`keydown key=${shown(e.key, secret() && e.key.length === 1)} code=${shown(e.code, secret())} keyCode=${secret() && e.key.length === 1 ? '*' : e.keyCode}${e.isComposing ? ' composing' : ''}${e.defaultPrevented ? ' PREVENTED' : ''}`);
 		if (MODIFIER_KEYS.has(e.key))
 			return;
 
@@ -309,6 +350,10 @@ export function installKeyboard({ canvas, text, size, refit, isActive }) {
 			stats.typed += edit.text.length;
 			call('Type', () => text.Type(edit.text));
 		}
+		if (trace) {
+			const f = engineField();
+			note(`edit: ${edit.right ? `right ${edit.right}, ` : ''}${edit.backspaces ? `backspace ${edit.backspaces}, ` : ''}type ${shown(edit.text, secret())} -> engine ${f ? `${shown(f.text, secret())}@${f.cursor}` : 'no field'}`);
+		}
 		for (let i = edit.cursorAfter; i > caretAfter; i--)
 			key('ArrowLeft');
 		for (let i = edit.cursorAfter; i < caretAfter; i++)
@@ -336,6 +381,18 @@ export function installKeyboard({ canvas, text, size, refit, isActive }) {
 		resync();
 	});
 	input.addEventListener('blur', onBlur);
+	if (trace) {
+		input.addEventListener('keypress', e => note(`keypress key=${shown(e.key, secret() && e.key.length === 1)} charCode=${secret() ? '*' : e.charCode}${e.defaultPrevented ? ' PREVENTED' : ''}`), true);
+		input.addEventListener('beforeinput', e => note(`beforeinput ${e.inputType} data=${shown(e.data, secret())}${e.isComposing ? ' composing' : ''}`));
+		input.addEventListener('input', e => note(`input ${e.inputType} data=${shown(e.data, secret())} value=${shown(input.value, secret())}@${input.selectionStart}`), true);
+		for (const type of ['compositionstart', 'compositionupdate', 'compositionend'])
+			input.addEventListener(type, e => note(`${type} data=${shown(e.data, secret())}`));
+		input.addEventListener('focus', () => note('input focus'));
+		input.addEventListener('blur', e => note(`input blur${e.relatedTarget ? ` to ${e.relatedTarget.id || e.relatedTarget.nodeName}` : ''}`), true);
+		window.addEventListener('blur', () => note('window blur'));
+		window.addEventListener('focus', () => note('window focus'));
+		document.addEventListener('visibilitychange', () => note(`page ${document.hidden ? 'hidden' : 'visible'}`));
+	}
 
 	// The caret moved without an edit (the iOS keyboard's trackpad, a physical keyboard's selection keys left to the
 	// input): the engine's cursor follows.
@@ -344,6 +401,7 @@ export function installKeyboard({ canvas, text, size, refit, isActive }) {
 			return;
 
 		const to = input.selectionStart;
+		note(`caret ${caret} -> ${to}`);
 		for (; caret < to; caret++)
 			key('ArrowRight');
 		for (; caret > to; caret--)
@@ -357,5 +415,24 @@ export function installKeyboard({ canvas, text, size, refit, isActive }) {
 		// While the keyboard is up, the window's height changes only because of it: the canvas keeps its size.
 		holdsViewport: () => focused(),
 		state: () => ({ open: focused(), composing, field: field && { kind: field.kind, id: field.id }, type: input.type, inputMode: input.inputMode, enterKeyHint: input.enterKeyHint, maxLength: input.maxLength }),
+		// The debug trace (null without debug), and a way to hear of new entries.
+		trace,
+		onTrace: listener => {
+			traceListeners.add(listener);
+			return () => traceListeners.delete(listener);
+		},
+		// What the debug overlay shows besides the trace: the page's input and the engine's field as they are now.
+		diagnostics: () => {
+			const f = engineField();
+			const active = document.activeElement;
+			return {
+				active: active ? active.id || active.nodeName : null,
+				open: focused(),
+				composing,
+				input: { type: input.type, value: shown(input.value, secret()), selection: [input.selectionStart, input.selectionEnd], rect: input.getBoundingClientRect() },
+				engine: f && { kind: f.kind, id: f.id, text: shown(f.text, f.kind === 'password'), cursor: f.cursor, maxLength: f.maxLength },
+				stats,
+			};
+		},
 	};
 }
