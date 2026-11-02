@@ -18,6 +18,7 @@ import { ensureContent, relayPackageUrl, sitePackageUrl } from './playra-content
 import * as page from './playra-page.js';
 import { showSplash } from './playra-splash.js';
 import { installKeyboard } from './playra-keyboard.js';
+import { keyboardDebugRequested, showKeyboardDiagnostics } from './playra-keyboard-debug.js';
 
 const params = new URLSearchParams(location.search);
 
@@ -993,7 +994,12 @@ async function main() {
 	setPhase('running');
 	canvas.focus();
 	// The on-screen keyboard of phones and tablets for the game's text fields (after Boot, which set up SDL's input).
-	keyboard = PlayRA.keyboard = installKeyboard({ canvas, text: exports.OpenRA.Web.TextInput, size, refit, isActive: () => PlayRA.phase === 'running' });
+	// ?debug=keyboard (or #debug=keyboard): its diagnostics on screen, for phones without developer tools. Read-only, so
+	// unlike the debug parameters above it also works on hosted builds.
+	const keyboardDebug = keyboardDebugRequested(location);
+	keyboard = PlayRA.keyboard = installKeyboard({ canvas, text: exports.OpenRA.Web.TextInput, size, refit, isActive: () => PlayRA.phase === 'running', debug: keyboardDebug });
+	if (keyboardDebug)
+		showKeyboardDiagnostics(keyboard);
 	watchFullscreenButton();
 	const { sleep } = startFrameLoop(host, exited);
 	if (build.mapData && !mapsBundle)
