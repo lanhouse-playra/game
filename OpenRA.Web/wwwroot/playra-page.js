@@ -334,10 +334,20 @@ export async function copyText(text, refocus) {
 	}
 }
 
-// Prevents the browser's own menus and gestures over the game.
+// Prevents the browser's own menus and gestures over the game. Not in a text input of the page (the on-screen keyboard's,
+// playra-keyboard.js): there the browser dispatches selectstart when the player selects text (WebKit for select-all and
+// for a selection grown from the caret, e.g. Shift with an arrow key), and its menu holds paste.
 export function suppressBrowserUi(canvas) {
+	const editable = node => {
+		const element = node && node.nodeType === Node.ELEMENT_NODE ? node : node && node.parentElement;
+		return !!(element && element.closest('input, textarea, [contenteditable]:not([contenteditable="false"])'));
+	};
+
 	for (const type of ['contextmenu', 'dragstart', 'selectstart'])
-		document.addEventListener(type, e => e.preventDefault());
+		document.addEventListener(type, e => {
+			if (!editable(e.target))
+				e.preventDefault();
+		});
 
 	canvas.style.touchAction = 'none';
 }
