@@ -10,6 +10,7 @@
 #endregion
 
 using System;
+using System.Formats.Asn1;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -408,6 +409,13 @@ namespace OpenRA.Test
 			Assert.Throws<CryptographicException>(() => ManagedRsa.FromXmlString("<Other/>"));
 		}
 
+		// The value of a DER/BER INTEGER without its tag, length and leading zero bytes.
+		static byte[] IntegerContents(ReadOnlyMemory<byte> encoded)
+		{
+			AsnDecoder.ReadEncodedValue(encoded.Span, AsnEncodingRules.BER, out var offset, out var length, out _);
+			return encoded.Span.Slice(offset, length).ToArray().SkipWhile(b => b == 0).ToArray();
+		}
+
 		[Test]
 		public void PemAndFingerprintMatchDesktop()
 		{
@@ -415,14 +423,16 @@ namespace OpenRA.Test
 			{
 				var pem = CryptoUtil.EncodePEMPublicKey(key);
 
-				// The SubjectPublicKeyInfo the forum stores: the desktop runtime reads it back to the same key.
-				using (var rsa = RSA.Create())
-				{
-					rsa.ImportFromPem(pem);
-					var read = rsa.ExportParameters(false);
-					Assert.That(read.Modulus, Is.EqualTo(key.Modulus));
-					Assert.That(read.Exponent, Is.EqualTo(key.Exponent));
-				}
+				// The SubjectPublicKeyInfo the forum stores holds the same key. EncodePublicKey pads every INTEGER with a zero
+				// byte, the exponent too, which is not a minimal encoding: OpenSSL (the forum, .NET on Linux and macOS) accepts
+				// it, .NET's own ASN.1 reader (RSA.ImportFromPem on Windows) does not. So the INTEGERs are read as raw contents.
+				var der = Convert.FromBase64String(pem[PemEncoding.Find(pem).Base64Data]);
+				var spki = new AsnReader(der, AsnEncodingRules.BER).ReadSequence();
+				spki.ReadSequence();
+				var rsaKey = new AsnReader(spki.ReadBitString(out _), AsnEncodingRules.BER).ReadSequence();
+				Assert.That(IntegerContents(rsaKey.ReadEncodedValue()), Is.EqualTo(key.Modulus));
+				Assert.That(IntegerContents(rsaKey.ReadEncodedValue()), Is.EqualTo(key.Exponent));
+				Assert.That(rsaKey.HasData, Is.False);
 
 				// What Server.cs does with the PublicKey of the forum's profile (the PEM with \n line ends, as PHP keeps it).
 				var decoded = CryptoUtil.DecodePEMPublicKey(pem.Replace("\r\n", "\n"));
