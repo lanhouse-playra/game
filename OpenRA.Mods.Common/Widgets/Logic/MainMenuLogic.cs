@@ -57,6 +57,11 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 
 		void SwitchMenu(MenuType type)
 		{
+			// No single player menu without a local server (the browser build, see SINGLEPLAYER_BUTTON below): anything
+			// that would return to it (a panel's back button, the menu restored after a game) shows the main menu.
+			if (type == MenuType.Singleplayer && !Game.CanHostLocalServer)
+				type = MenuType.Main;
+
 			menuType = type;
 
 			DiscordService.UpdateStatus(DiscordState.InMenu);
@@ -76,7 +81,12 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 			var mainMenu = widget.Get("MAIN_MENU");
 			mainMenu.IsVisible = () => menuType == MenuType.Main;
 
-			mainMenu.Get<ButtonWidget>("SINGLEPLAYER_BUTTON").OnClick = () => SwitchMenu(MenuType.Singleplayer);
+			var singleplayerButton = mainMenu.Get<ButtonWidget>("SINGLEPLAYER_BUTTON");
+			singleplayerButton.OnClick = () => SwitchMenu(MenuType.Singleplayer);
+
+			// The browser build: every entry of the single player menu needs a local server, which it cannot run.
+			if (!Game.CanHostLocalServer)
+				BrowserUnavailable.Disable(singleplayerButton, BrowserTooltipContainer(), Game.BrowserNoLocalServerHint);
 
 			mainMenu.Get<ButtonWidget>("MULTIPLAYER_BUTTON").OnClick = OpenMultiplayerPanel;
 
@@ -159,7 +169,7 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 
 			// The browser build: maps saved in the editor do not persist properly there; the desktop game has it.
 			if (OperatingSystem.IsBrowser())
-				BrowserUnavailable.Disable(mapEditorButton, LocalServerButtons.AddTooltipContainer(rootMenu, "BROWSER_TOOLTIP_CONTAINER"));
+				BrowserUnavailable.Disable(mapEditorButton, BrowserTooltipContainer());
 
 			var assetBrowserButton = extrasMenu.GetOrNull<ButtonWidget>("ASSETBROWSER_BUTTON");
 			if (assetBrowserButton != null)
@@ -450,6 +460,13 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 				newsPanel.Layout.AdjustChildren();
 				newsPanel.Bounds.Height = Math.Min(newsPanel.ContentHeight, maxNewsHeight);
 			}
+		}
+
+		// The tooltip container of the entries the browser build disables, added once.
+		string BrowserTooltipContainer()
+		{
+			const string Id = "BROWSER_TOOLTIP_CONTAINER";
+			return rootMenu.GetOrNull(Id) != null ? Id : LocalServerButtons.AddTooltipContainer(rootMenu, Id);
 		}
 
 		void RemoveShellmapUI()

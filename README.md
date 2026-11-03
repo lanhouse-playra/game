@@ -86,7 +86,8 @@ around 20 minutes.
 
 ## What does not work in the browser
 
-- Local games: skirmish, missions and creating a server (a browser cannot host one). Join a server from Multiplayer.
+- Single player and creating a server: skirmish, missions and saved games all run a local game server, which a browser
+  cannot host, so the main menu's Singleplayer entry is shown disabled. Join a server from Multiplayer.
 - The map editor.
 - Some display and system options: video mode, window size, VSync, display selection, lock mouse to window,
   UPnP/NAT-PMP, Discord Rich Presence, disc detection, auto-save. They are shown disabled with "Not available in the
