@@ -1,8 +1,9 @@
-# Upstream files that the playra patch set may change, relative to the upstream tag in build-web.sh.
+# Upstream files that the playra patch set may change, relative to the upstream base in build-web.sh
+# (the release tag UPSTREAM_TAG, or ahead of a release the bleed commit UPSTREAM_BLEED).
 # An official build (one stamped with the upstream version, which servers accept) refuses to build
 # if any other file outside OpenRA.Web/ differs from the tag: the server admits a client by its mod
 # and version string alone, so code it runs must be upstream's plus these reviewed patches.
-# mods/, glsl/ and "global mix database.dat" must always equal the tag.
+# mods/, glsl/ and "global mix database.dat" must always equal the base.
 # Add a file here only together with the review of its change.
 OpenRA.Game/CryptoUtil.cs
 OpenRA.Game/Game.Browser.cs

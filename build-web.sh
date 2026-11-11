@@ -10,9 +10,10 @@
 #   official (default)  Stamps the upstream release version (UPSTREAM_TAG below) into VERSION and
 #                       every mod.yaml. Game servers admit a client by its mod and version string
 #                       alone, so this build refuses to run unless the working tree is clean, HEAD
-#                       is based on UPSTREAM_TAG (merges included: every commit since the tag descends
-#                       from it), the mod data equals the tag and every other changed upstream file
-#                       is listed in OpenRA.Web/upstream-patches.txt. It compiles and
+#                       is based on the upstream base (merges included: every commit since the base
+#                       descends from it), the mod data equals the base and every other changed upstream
+#                       file is listed in OpenRA.Web/upstream-patches.txt. The base is UPSTREAM_TAG, or
+#                       ahead of a release the bleed commit UPSTREAM_BLEED (see below). It compiles and
 #                       packages a "git archive HEAD" export, never the working tree. The page ignores
 #                       debug URL parameters.
 #   dev (PLAYRA_DEV=1)   Builds the working tree as it is and stamps {DEV_VERSION}, which no release
@@ -80,7 +81,20 @@ fail()
 }
 
 # The upstream release this branch is based on. Official builds carry exactly this version string.
-UPSTREAM_TAG="playtest-20261026"
+# Ahead of a release UPSTREAM_TAG is empty and UPSTREAM_BLEED names the upstream bleed commit this
+# branch is based on instead: official builds then carry {DEV_VERSION}, the version a stock server
+# built from that commit with "make" reports, so they join such servers and no release server.
+UPSTREAM_TAG=""
+UPSTREAM_BLEED="b4d95a56717d8d0070f195e343f6c2728ce87900"
+if [ -n "${UPSTREAM_TAG}" ]; then
+	UPSTREAM_BASE="refs/tags/${UPSTREAM_TAG}"
+	UPSTREAM_NAME="${UPSTREAM_TAG}"
+	UPSTREAM_VERSION="${UPSTREAM_TAG}"
+else
+	UPSTREAM_BASE="${UPSTREAM_BLEED}"
+	UPSTREAM_NAME="bleed ${UPSTREAM_BLEED}"
+	UPSTREAM_VERSION="{DEV_VERSION}"
+fi
 
 # Pinned toolchain. The Mono runtime is part of the simulation's determinism (numeric conversions,
 # the interpreter bug worked around in main.js with MONO_INTERPRETER_OPTIONS=-tiering), so a different
@@ -100,7 +114,7 @@ PLAYRA_AOT="${PLAYRA_AOT:-0}"
 PLAYRA_MODS="${PLAYRA_MODS:-ra}"
 PLAYRA_EM_CACHE="${PLAYRA_EM_CACHE:-${WEB}/obj/emcache}"
 
-[ -z "${PLAYRA_VERSION:-}" ] || fail "PLAYRA_VERSION is not supported: official builds stamp ${UPSTREAM_TAG}, dev builds (PLAYRA_DEV=1) {DEV_VERSION}."
+[ -z "${PLAYRA_VERSION:-}" ] || fail "PLAYRA_VERSION is not supported: official builds stamp ${UPSTREAM_VERSION}, dev builds (PLAYRA_DEV=1) {DEV_VERSION}."
 
 if [ -n "${PLAYRA_TARGET:-}" ]; then
 	printf '%s' "${PLAYRA_TARGET}" | grep -Eq '^[a-z0-9-]{1,32}$' || fail "PLAYRA_TARGET must be a plain name: ${PLAYRA_TARGET}"
@@ -134,23 +148,23 @@ else
 	DIRTY="$(git -C "${ROOT}" status --porcelain --untracked-files=normal)"
 	[ -z "${DIRTY}" ] || fail "the working tree has uncommitted or untracked changes; an official build must match a commit (commit them, or use PLAYRA_DEV=1):
 ${DIRTY}"
-	git -C "${ROOT}" rev-parse -q --verify "refs/tags/${UPSTREAM_TAG}^{commit}" > /dev/null || fail "tag ${UPSTREAM_TAG} not found (git fetch --tags upstream)"
-	git -C "${ROOT}" merge-base --is-ancestor "${UPSTREAM_TAG}" HEAD || fail "HEAD is not based on ${UPSTREAM_TAG}"
-	# A merge can bring in history that does not start at the tag (another release, a branch cut before the tag):
-	# every commit since the tag must descend from it. The checks below compare trees, so they hold for merges.
-	git -C "${ROOT}" rev-list --ancestry-path "${UPSTREAM_TAG}..HEAD" > "${OBJ}/ancestry.list"
-	FOREIGN="$(git -C "${ROOT}" rev-list "${UPSTREAM_TAG}..HEAD" | grep -vxF -f "${OBJ}/ancestry.list" || true)"
-	[ -z "${FOREIGN}" ] || fail "HEAD has $(echo "${FOREIGN}" | wc -l) commits since ${UPSTREAM_TAG} that do not descend from it (merged from another base), for example:
+	git -C "${ROOT}" rev-parse -q --verify "${UPSTREAM_BASE}^{commit}" > /dev/null || fail "${UPSTREAM_NAME} not found (git fetch --tags upstream)"
+	git -C "${ROOT}" merge-base --is-ancestor "${UPSTREAM_BASE}" HEAD || fail "HEAD is not based on ${UPSTREAM_NAME}"
+	# A merge can bring in history that does not start at the base (another release, a branch cut before the tag):
+	# every commit since the base must descend from it. The checks below compare trees, so they hold for merges.
+	git -C "${ROOT}" rev-list --ancestry-path "${UPSTREAM_BASE}..HEAD" > "${OBJ}/ancestry.list"
+	FOREIGN="$(git -C "${ROOT}" rev-list "${UPSTREAM_BASE}..HEAD" | grep -vxF -f "${OBJ}/ancestry.list" || true)"
+	[ -z "${FOREIGN}" ] || fail "HEAD has $(echo "${FOREIGN}" | wc -l) commits since ${UPSTREAM_NAME} that do not descend from it (merged from another base), for example:
 $(echo "${FOREIGN}" | head -5 | xargs git -C "${ROOT}" log --no-walk --oneline)"
-	git -C "${ROOT}" diff --quiet "${UPSTREAM_TAG}" HEAD -- mods glsl "global mix database.dat" \
-		|| fail "mod data differs from ${UPSTREAM_TAG}; servers would accept a client running other rules:
-$(git -C "${ROOT}" diff --stat "${UPSTREAM_TAG}" HEAD -- mods glsl "global mix database.dat")"
+	git -C "${ROOT}" diff --quiet "${UPSTREAM_BASE}" HEAD -- mods glsl "global mix database.dat" \
+		|| fail "mod data differs from ${UPSTREAM_NAME}; servers would accept a client running other rules:
+$(git -C "${ROOT}" diff --stat "${UPSTREAM_BASE}" HEAD -- mods glsl "global mix database.dat")"
 	grep -v '^#' "${WEB}/upstream-patches.txt" | sed '/^[[:space:]]*$/d' > "${OBJ}/upstream-patches.list"
-	UNEXPECTED="$(git -C "${ROOT}" diff --name-only "${UPSTREAM_TAG}" HEAD | grep -v '^OpenRA\.Web/' | grep -vxF -f "${OBJ}/upstream-patches.list" || true)"
-	[ -z "${UNEXPECTED}" ] || fail "files changed since ${UPSTREAM_TAG} that are not in OpenRA.Web/upstream-patches.txt:
+	UNEXPECTED="$(git -C "${ROOT}" diff --name-only "${UPSTREAM_BASE}" HEAD | grep -v '^OpenRA\.Web/' | grep -vxF -f "${OBJ}/upstream-patches.list" || true)"
+	[ -z "${UNEXPECTED}" ] || fail "files changed since ${UPSTREAM_NAME} that are not in OpenRA.Web/upstream-patches.txt:
 ${UNEXPECTED}"
 
-	VERSION="${UPSTREAM_TAG}"
+	VERSION="${UPSTREAM_VERSION}"
 	SRC="${OBJ}/src"
 	rm -rf "${SRC}"
 	mkdir -p "${SRC}"

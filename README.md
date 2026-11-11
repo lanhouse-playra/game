@@ -1,6 +1,7 @@
 # playRA: OpenRA in the browser
 
-This is stock [OpenRA](https://www.openra.net) (the Red Alert mod, release `playtest-20261026`) compiled to
+This is stock [OpenRA](https://www.openra.net) (the Red Alert mod; this branch, `next-playtest`, tracks upstream
+`bleed` ahead of the next playtest, while `main` is release `playtest-20261026`) compiled to
 WebAssembly so that it runs in a web browser, with nothing to install. Browser players join the regular OpenRA
 multiplayer servers from the normal server list and play in the same matches as desktop players: same version, same
 mod data, lockstep-compatible.
@@ -77,8 +78,9 @@ PLAYRA_TARGET=lanhouse PLAYRA_AOT=1 ./build-web.sh   # the build that runs on pl
 ./build-web.sh serve                                 # serve OpenRA.Web/dist/ on http://127.0.0.1:8090/
 ```
 
-An official build (the default) needs a clean git checkout based on the tag `playtest-20261026` and compiles a
-`git archive` of `HEAD`, never the working tree. `PLAYRA_DEV=1` builds the working tree with a development version
+An official build (the default) needs a clean git checkout based on the upstream base named in `build-web.sh` (on
+this branch the upstream `bleed` commit it is rebased onto, stamped `{DEV_VERSION}` like a server built from that
+commit with `make`) and compiles a `git archive` of `HEAD`, never the working tree. `PLAYRA_DEV=1` builds the working tree with a development version
 that no public server accepts. `PLAYRA_TARGET=<name>` reads `OpenRA.Web/hosting/<name>.env` (relay address, content
 source, page title, start screen); copy `lanhouse.env` to host your own. The header of `build-web.sh` documents every
 variable. AOT compiles one assembly at a time by default, which fits in about 6 GB of memory; an AOT build takes
