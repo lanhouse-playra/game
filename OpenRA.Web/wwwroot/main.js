@@ -855,7 +855,15 @@ async function main() {
 		ui.notice.hidden = true;
 	});
 
-	const build = PlayRA.build = await fetch(at('data/build.json'), { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+	// Every build has one: without it the page would go on with no relay, no data names and no start screen
+	// texts, and fail later with a message that names the wrong file.
+	const build = PlayRA.build = await fetch(at('data/build.json'), { cache: 'no-cache' }).then(r => {
+		if (!r.ok)
+			throw new Error(`${r.status} ${r.statusText}`);
+		return r.json();
+	}).catch(e => {
+		throw new Error(`Failed to download data/build.json (${e && e.message || e}). Check the connection and try again.`);
+	});
 	devBuild = build.dev === true;
 	const storageName = PlayRA.storageName = storageNameFor(build);
 	if (build.contentUrl)
