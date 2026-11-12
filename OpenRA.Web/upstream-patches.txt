@@ -46,5 +46,6 @@ OpenRA.Platforms.Default/Sdl2PlatformWindow.cs
 OpenRA.Test/OpenRA.Game/ManagedRsaTest.cs
 OpenRA.Test/OpenRA.Game/ProxyProtocolTest.cs
 OpenRA.Test/OpenRA.Game/StreamFrameReaderTest.cs
+OpenRA.Test/OpenRA.Mods.Common/MasterServerJsonTest.cs
 README.md
 build-web.sh

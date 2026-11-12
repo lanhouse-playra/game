@@ -42,7 +42,7 @@ import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
 
-# The official mirror list host and the mirrors it lists today (the relay's defaults, source/proxy).
+# The official mirror list host and the mirrors it lists today (also the relay's defaults).
 MIRROR_LIST_HOSTS = {"www.openra.net"}
 MIRROR_HOSTS = {"openra.baxxster.no", "openra.ppmsite.com", "republic.community", "openra.0x47.net"}
 MAX_BYTES = 64 << 20
