@@ -117,6 +117,7 @@ const NOTICES = {
 	maps: 'The game\'s built-in maps could not be downloaded yet; the page keeps trying once a minute. Until they arrive, the map list holds only one built-in map and the maps downloaded from the OpenRA resource center, and a lobby on another built-in map shows that map as missing.',
 	mapsBroken: 'The game\'s built-in maps could not be added. Reload the page to try again.',
 	clock: 'This browser blocked the background clock the game uses in hidden tabs. If you switch to another tab or window during a multiplayer match, the game slows down for every player: keep this tab visible while you play.',
+	restart: 'The game did not restart: the changed settings could not be saved in this browser, and a restart reloads the page, which would lose them. If the browser storage for this site is full, free some space (for example, delete old replays in the game) and press Restart Now again.',
 };
 
 // Reset saved data: deletes the saved support directory (settings, profile, replays, maps), keeps
@@ -142,7 +143,8 @@ async function resetSaved() {
 
 // "Restart Now" in the game's settings: the browser's restart is a page reload. The engine has just written
 // settings.yaml into /support, and the reload restores /support from IndexedDB, so it is saved there first.
-// If that fails, the storage notice is up and the page stays as it is: a reload would lose the change.
+// If that fails, the page stays as it is (a reload would lose the change) and says so: the storage notice
+// may have been shown and closed already, and the dialog the button was in has gone.
 async function restart() {
 	try {
 		if (!PlayRA.support || await PlayRA.support.flush()) {
@@ -154,6 +156,7 @@ async function restart() {
 	}
 
 	console.warn('[playra] restart: the settings could not be saved, so the page was not reloaded');
+	notify(NOTICES.restart, true);
 }
 
 // Quit in the game's menu. With a start screen, the page goes back to it: the engine cannot start again
@@ -852,7 +855,15 @@ async function main() {
 		ui.notice.hidden = true;
 	});
 
-	const build = PlayRA.build = await fetch(at('data/build.json'), { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+	// Every build has one: without it the page would go on with no relay, no data names and no start screen
+	// texts, and fail later with a message that names the wrong file.
+	const build = PlayRA.build = await fetch(at('data/build.json'), { cache: 'no-cache' }).then(r => {
+		if (!r.ok)
+			throw new Error(`${r.status} ${r.statusText}`);
+		return r.json();
+	}).catch(e => {
+		throw new Error(`Failed to download data/build.json (${e && e.message || e}). Check the connection and try again.`);
+	});
 	devBuild = build.dev === true;
 	const storageName = PlayRA.storageName = storageNameFor(build);
 	if (build.contentUrl)
@@ -889,7 +900,7 @@ async function main() {
 				progress.set('framework', 'Game engine', Math.round((total ? loaded / total : 0) * frameworkBytes), frameworkBytes),
 		})
 		// The loader would fetch every resource with cache: 'no-cache' (a revalidation per file per
-		// visit). The _framework files are fingerprinted and served as immutable (deploy/playra.caddy),
+		// visit). The _framework files are fingerprinted and served as immutable (tools/publish.py),
 		// and the unfingerprinted dotnet.js is revalidated by its own Cache-Control header.
 		.withConfig({ disableNoCacheFetch: true })
 		.withRuntimeOptions(debugParams('rt'))
@@ -979,9 +990,14 @@ async function main() {
 	// The render size is fixed at boot, so it is taken now, from the window as it is (fullscreen when
 	// the player chose it; on a phone, the part of it outside the notch and the home indicator). ?w= and
 	// ?h= (render size for tests) are clamped: a crafted link must not make the tab allocate a huge canvas.
-	const sizeParam = name => Math.min(4096, Number(params.get(name)) || 0);
+	// The lower bounds matter as much: renderSize scales a size below the menus' minimum up, so ?w=1 made
+	// the height 1024 times the window's.
+	const sizeParam = (name, min) => {
+		const value = Math.round(Number(params.get(name)));
+		return value > 0 ? Math.min(4096, Math.max(min, value)) : 0;
+	};
 	const area = page.safeArea();
-	const size = PlayRA.renderSize = page.renderSize(sizeParam('w') || area.width, sizeParam('h') || area.height);
+	const size = PlayRA.renderSize = page.renderSize(sizeParam('w', 1024) || area.width, sizeParam('h', 720) || area.height);
 	let keyboard = null;
 	const refit = page.fitCanvas(canvas, size, { hold: () => keyboard !== null && keyboard.holdsViewport() });
 	host.Boot(bootArguments(size, proxy));
@@ -1006,7 +1022,7 @@ async function main() {
 		loadDeferredMaps(at(build.mapData), FS, host, sleep);
 }
 
-// Content-Security-Policy violations (deploy/playra.caddy) are recorded for tests and bug reports.
+// Content-Security-Policy violations (tools/publish.py csp) are recorded for tests and bug reports.
 document.addEventListener('securitypolicyviolation', e => PlayRA.errors.push(`CSP: ${e.violatedDirective} blocked ${e.blockedURI}`));
 window.addEventListener('error', e => PlayRA.errors.push(String(e.error && e.error.stack || e.message)));
 window.addEventListener('unhandledrejection', e => PlayRA.errors.push(String(e.reason && e.reason.stack || e.reason)));

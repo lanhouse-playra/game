@@ -145,8 +145,8 @@ namespace OpenRA.Web
 
 		/// <summary>
 		/// The relay accepts the WebSocket before it checks the target and connects, and reports a
-		/// refusal with these close codes (source/proxy README), because a page cannot read the HTTP
-		/// status of a failed WebSocket upgrade. Other codes keep the engine's generic message.
+		/// refusal with these close codes, because a page cannot read the HTTP status of a failed
+		/// WebSocket upgrade. Other codes keep the engine's generic message.
 		/// </summary>
 		public static string CloseMessage(int code)
 		{
