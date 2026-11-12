@@ -128,7 +128,7 @@ export class SupportSync {
 		this.syncing = null;
 		this.stopped = false;
 		this.timer = 0;
-		this.stats = { restoredFiles: 0, restoredBytes: 0, skipped: [], syncs: 0, failedSyncs: 0, written: 0, deleted: 0, failedFiles: 0, lastError: null };
+		this.stats = { restoredFiles: 0, restoredBytes: 0, skipped: [], syncs: 0, failedSyncs: 0, written: 0, deleted: 0, failedFiles: 0, openSkipped: 0, lastError: null };
 	}
 
 	async restore() {
@@ -175,9 +175,16 @@ export class SupportSync {
 		return this.exclude.some(e => path === e || path.startsWith(e + '/'));
 	}
 
+	// Every saved file with its modification time, and which of them a stream still has open for writing.
 	scan() {
 		const FS = this.FS;
 		const found = new Map();
+		const writing = new Set();
+		const open = new Set();
+		for (const stream of FS.streams || [])
+			if (stream && stream.isWrite && stream.node)
+				open.add(stream.node.id);
+
 		const walk = dir => {
 			let names;
 			try {
@@ -197,13 +204,16 @@ export class SupportSync {
 				const stat = FS.stat(path);
 				if (FS.isDir(stat.mode))
 					walk(path);
-				else if (FS.isFile(stat.mode) && stat.size <= this.maxFileBytes)
+				else if (FS.isFile(stat.mode) && stat.size <= this.maxFileBytes) {
 					found.set(path, stat.mtime.getTime());
+					if (open.has(stat.ino))
+						writing.add(path);
+				}
 			}
 		};
 
 		walk(this.root);
-		return found;
+		return { found, writing };
 	}
 
 	sync() {
@@ -233,11 +243,21 @@ export class SupportSync {
 	}
 
 	async syncOnce() {
-		const found = this.scan();
+		const { found, writing } = this.scan();
 		const changed = [];
-		for (const [path, mtime] of found)
-			if (this.known.get(path) !== mtime && this.failed.get(path) !== mtime)
-				changed.push([path, mtime]);
+		for (const [path, mtime] of found) {
+			if (this.known.get(path) === mtime || this.failed.get(path) === mtime)
+				continue;
+
+			// A file still being written (the replay, during the whole match) is saved once it is closed:
+			// saved now, it would be read and stored again, whole, at every sync while it grows.
+			if (writing.has(path)) {
+				this.stats.openSkipped++;
+				continue;
+			}
+
+			changed.push([path, mtime]);
+		}
 
 		const deletes = [...this.known.keys(), ...this.dropped].filter(path => !found.has(path));
 		this.stats.syncs++;
