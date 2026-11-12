@@ -56,6 +56,26 @@
 		<SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
 	</PropertyGroup>
 
+	<!--
+		Generic instances found at run time. The AOT compiler compiles the generic instances it sees in the code;
+		others (instances made by shared generic code at run time, value types as type arguments across assemblies)
+		ran in Mono's interpreter, about a tenth of the main thread in a match. aot/playra.aotprofile, recorded
+		with Mono's AOT profiler in a dev build (aot/AotProfileRecorder.cs), lists every method a session ran, and the
+		compiler adds the generic instances in it (Mono's "profile" option, without "profile-only": everything else
+		is compiled as before).
+	-->
+	<ItemGroup Condition="'$(RunAOTCompilation)' == 'true' and '$(PlayraAotProfiler)' != 'true' and Exists('$(MSBuildProjectDirectory)/aot/playra.aotprofile')">
+		<MonoAOTCompilerDefaultAotArguments Include="profile=$(MSBuildProjectDirectory)/aot/playra.aotprofile" />
+	</ItemGroup>
+
+	<!-- Dev builds with PLAYRA_AOT_PROFILER=1 (build-web.sh) link Mono's AOT profiler and the recorder that saves its data. -->
+	<PropertyGroup Condition="'$(PlayraAotProfiler)' == 'true'">
+		<WasmProfilers>aot</WasmProfilers>
+	</PropertyGroup>
+	<ItemGroup Condition="'$(PlayraAotProfiler)' != 'true'">
+		<Compile Remove="aot/**" />
+	</ItemGroup>
+
 	<ItemGroup>
 		<ProjectReference Include="..\OpenRA.Game\OpenRA.Game.csproj" />
 		<ProjectReference Include="..\OpenRA.Platforms.Default\OpenRA.Platforms.Default.csproj" />
