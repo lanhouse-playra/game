@@ -333,11 +333,14 @@ export class SupportSync {
 	}
 
 	// Saves everything written until now: waits for a sync in progress (and the one it may have queued),
-	// then runs one more. Resolves to true if that last sync saved every change it found.
+	// then runs one more. Resolves to true if that last sync saved every change it found. Files whose
+	// write failed before are tried again: a sync skips them until they change, so a failed periodic
+	// sync just before (settings.yaml, written when the settings closed) would otherwise count as saved.
 	async flush() {
 		while (this.syncing)
 			await this.syncing;
 
+		this.failed.clear();
 		const failed = this.stats.failedSyncs;
 		await this.sync();
 		while (this.syncing)
