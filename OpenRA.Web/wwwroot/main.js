@@ -982,9 +982,14 @@ async function main() {
 	// The render size is fixed at boot, so it is taken now, from the window as it is (fullscreen when
 	// the player chose it; on a phone, the part of it outside the notch and the home indicator). ?w= and
 	// ?h= (render size for tests) are clamped: a crafted link must not make the tab allocate a huge canvas.
-	const sizeParam = name => Math.min(4096, Number(params.get(name)) || 0);
+	// The lower bounds matter as much: renderSize scales a size below the menus' minimum up, so ?w=1 made
+	// the height 1024 times the window's.
+	const sizeParam = (name, min) => {
+		const value = Math.round(Number(params.get(name)));
+		return value > 0 ? Math.min(4096, Math.max(min, value)) : 0;
+	};
 	const area = page.safeArea();
-	const size = PlayRA.renderSize = page.renderSize(sizeParam('w') || area.width, sizeParam('h') || area.height);
+	const size = PlayRA.renderSize = page.renderSize(sizeParam('w', 1024) || area.width, sizeParam('h', 720) || area.height);
 	let keyboard = null;
 	const refit = page.fitCanvas(canvas, size, { hold: () => keyboard !== null && keyboard.holdsViewport() });
 	host.Boot(bootArguments(size, proxy));
