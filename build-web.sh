@@ -33,7 +33,7 @@
 #   PLAYRA_RELAY_URL     WebSocket-to-TCP relay the page uses for game connections, written to
 #                       data/build.json: an absolute ws:// or wss:// URL, or a path resolved against the
 #                       page's own address (ws: for http pages, wss: for https). Default "ws", i.e. the
-#                       relay at <page directory>/ws on the same host (deploy/ kit). Dev builds also take ?proxy=
+#                       relay at <page directory>/ws on the same host. Dev builds also take ?proxy=
 #   PLAYRA_CONTENT_RELAY Path of the relay's content route (official mirror downloads), default "content"
 #   PLAYRA_CONTENT_URL   Where the page downloads the game content instead of the relay: a path on the page's
 #                       own site, relative to the build's directory (e.g. "content": <base>/content/
@@ -423,13 +423,13 @@ fi
 
 # The content manifest: what the page downloads (through the relay, from the official mirrors) and
 # installs on the first visit, read from the mod's own content installer definitions. The relay
-# serves only the packages in this file (deploy/ copies it next to the relay).
+# serves only the packages in this file (the deployment copies it next to the relay).
 FIRST_MOD="$(echo ${PLAYRA_MODS} | cut -d ' ' -f 1)"
 python3 -I "${SRC_WEB}/tools/content-manifest.py" "${ENGINE_STAGE}" "${FIRST_MOD}" "${DIST}/data/content-packages.json"
 
 if [ -n "${PLAYRA_CONTENT_DIR:-}" ]; then
 	# Local testing only: this is copyrighted (freeware) game content. Do not publish it.
-	# deploy/deploy.sh refuses a build that contains it.
+	# tools/publish.py refuses a build that contains it.
 	echo "WARNING: packaging local game content from ${PLAYRA_CONTENT_DIR}: this build must not be published" >&2
 	python3 -I "${SRC_WEB}/tools/pack-data.py" "${PLAYRA_CONTENT_DIR}" /support/Content/ra/v2 "${DIST}/data/content"
 fi
@@ -463,7 +463,7 @@ PLAYRA_STORAGE_NAME="${PLAYRA_STORAGE_NAME:-}"
 [ -z "${PLAYRA_STORAGE_NAME}" ] || printf '%s' "${PLAYRA_STORAGE_NAME}" | grep -Eq '^[A-Za-z0-9:/._-]{0,64}$' || fail "PLAYRA_STORAGE_NAME must be a plain name: ${PLAYRA_STORAGE_NAME}"
 
 # Content-addressed names for the data bundles (engine, maps), so browsers can cache them forever
-# (deploy/playra.caddy: immutable). build.json, which names them, is always revalidated. The name
+# (served as immutable). build.json, which names them, is always revalidated. The name
 # covers the index too: a build that only changes paths (or adds an empty file) keeps the same .bin
 # bytes, and an index cached under the old name would not match it.
 bundle_hash() { (sha256sum < "$1.bin"; sha256sum < "$1.json") | sha256sum | cut -c 1-16; }
@@ -592,7 +592,7 @@ python3 -I "${SRC_WEB}/tools/publish.py" first-visit "${DIST}" --encoding "${PLA
 "${EMSDK_NODE}" "${SRC_WEB}/tools/brotli.mjs" "${DIST}/data/build.json" >> "${OBJ}/brotli.log"
 
 # Precompressed copies of the data for the web server (the SDK already compressed _framework and
-# the page's own files). deploy/Caddyfile serves them with "precompressed zstd br gzip".
+# the page's own files), for web servers that pick a precompressed file by Accept-Encoding.
 python3 -I "${SRC_WEB}/tools/precompress.py" "${DIST}/data"
 
 # The publish manifest, next to dist/: every object to upload with its headers, and what the CDN must add
