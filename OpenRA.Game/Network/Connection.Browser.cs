@@ -174,7 +174,8 @@ namespace OpenRA.Network
 
 			Game.RunAfterDelay(BrowserConnectTimeout, () =>
 			{
-				if (!listener.HandshakeReceived && !listener.Closed)
+				// transport is null once the connection is closed or disposed (the player cancelled the connect).
+				if (transport != null && !listener.HandshakeReceived && !listener.Closed)
 				{
 					Log.Write("client", $"Failed to connect to {endpoint.Host}:{endpoint.Port}: timed out");
 					listener.Fail("Failed to connect");
