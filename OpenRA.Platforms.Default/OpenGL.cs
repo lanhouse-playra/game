@@ -15,6 +15,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using SDL2;
@@ -671,8 +672,18 @@ namespace OpenRA.Platforms.Default
 			// Browser (WebAssembly) builds route lookups through a small native shim that adapts
 			// the few calls WebGL 2 does not support (BGRA texture formats), see OpenRA.Web/native.
 			var address = OperatingSystem.IsBrowser() ? playra_gl_get_proc_address(name) : SDL.SDL_GL_GetProcAddress(name);
+
+			// A delegate made from a function pointer calls it through a marshalling wrapper the runtime creates
+			// at run time, which the browser runtime can only interpret. OpenRA.Web declares the GL functions with
+			// plain signatures as DllImports, whose wrappers are compiled ahead of time: bind to those instead.
+			if (BrowserEntryPoints?.GetMethod(name, BindingFlags.Public | BindingFlags.Static) is MethodInfo direct &&
+				Delegate.CreateDelegate(typeof(T), direct, false) is T bound)
+				return bound;
+
 			return (T)(object)Marshal.GetDelegateForFunctionPointer(address, typeof(T));
 		}
+
+		static readonly Type BrowserEntryPoints = OperatingSystem.IsBrowser() ? Type.GetType("OpenRA.Web.Generated.GLEntryPoints, OpenRA.Web") : null;
 
 		[DllImport("playra", CallingConvention = CallingConvention.Cdecl)]
 		static extern IntPtr playra_gl_get_proc_address([MarshalAs(UnmanagedType.LPUTF8Str)] string name);

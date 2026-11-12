@@ -279,7 +279,7 @@ dotnet build "${ELUANT_SRC}/Eluant/Eluant.csproj" -c Release -nologo -v quiet -p
 	-p:DefineConstants=MONOTOUCH -p:OutputPath="${OBJ}/eluant/"
 
 echo "== Generated sources"
-python3 -I "${SRC_WEB}/tools/gen-gl-signatures.py" "${SRC}/OpenRA.Platforms.Default/OpenGL.cs" "${OBJ}/GLSignatures.g.cs"
+python3 -I "${SRC_WEB}/tools/gen-gl-signatures.py" "${SRC}/OpenRA.Platforms.Default/OpenGL.cs" "${OBJ}/GLSignatures.g.cs" "${SRC_WEB}/native/playra_gl.c"
 DEV_BOOL=false
 [ "${PLAYRA_DEV}" = "1" ] && DEV_BOOL=true
 cat > "${OBJ}/PlayraBuildInfo.g.cs" << EOF
@@ -329,6 +329,9 @@ ${CHECK} --module lua51 "\"${LUA_SRC}/lua.h\"" "\"${LUA_SRC}/lauxlib.h\"" "\"${L
 ${CHECK} --module soft_oal "<AL/al.h>" "<AL/alc.h>"
 ${CHECK} --module freetype6 --cflag=-sUSE_FREETYPE=1 "<ft2build.h>" "FT_FREETYPE_H"
 ${CHECK} --module SDL2 --cflag=-sUSE_SDL=2 "<SDL2/SDL.h>" "<SDL2/SDL_vulkan.h>" "<SDL2/SDL_syswm.h>" | grep -v "not declared in the headers"
+# The GL entry points the engine binds directly (GLEntryPoints, tools/gen-gl-signatures.py): WebGL 2 through emscripten's
+# GLES 3 functions and the GL shim's replacements.
+${CHECK} --module playra "<GLES3/gl3.h>" "\"${SRC_WEB}/native/playra_gl.h\""
 
 # Lua's number-to-integer conversions match desktop x64 only while clang lowers them to guarded
 # i32/i64.trunc_f64_s (INT_MIN out of range, like cvttsd2si). The saturating forms (nontrapping-fptoint)

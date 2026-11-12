@@ -26,6 +26,7 @@
 #include <string.h>
 #include <GLES3/gl3.h>
 #include <emscripten/em_js.h>
+#include "playra_gl.h"
 #ifdef __wasm_simd128__
 #include <wasm_simd128.h>
 #endif
@@ -161,14 +162,14 @@ static void texture_state_update(GLuint id, uint8_t set, uint8_t clear)
 	texture_state[id] = (uint8_t)((texture_state[id] & ~clear) | set);
 }
 
-static void playra_glGenTextures(GLsizei n, GLuint *textures)
+void playra_glGenTextures(GLsizei n, GLuint *textures)
 {
 	glGenTextures(n, textures);
 	for (GLsizei i = 0; i < n; i++)
 		texture_state_update(textures[i], TEXTURE_LIVE, TEXTURE_BOUND);
 }
 
-static GLboolean playra_glIsTexture(GLuint texture)
+GLboolean playra_glIsTexture(GLuint texture)
 {
 	return texture != 0 && texture < texture_state_size
 		&& texture_state[texture] == (TEXTURE_LIVE | TEXTURE_BOUND) ? GL_TRUE : GL_FALSE;
@@ -235,13 +236,13 @@ static GLuint current_texture_2d(GLenum target)
 	return target == GL_TEXTURE_2D && active_unit < TEXTURE_UNITS ? bound_texture_2d[active_unit] : 0;
 }
 
-static void playra_glActiveTexture(GLenum texture)
+void playra_glActiveTexture(GLenum texture)
 {
 	active_unit = texture - GL_TEXTURE0;
 	glActiveTexture(texture);
 }
 
-static void playra_glFramebufferTexture2D(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level)
+void playra_glFramebufferTexture2D(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level)
 {
 	/* Rendering into the texture would change it behind the copy's back. */
 	drop_upload_copy(texture);
@@ -362,7 +363,7 @@ static void record_upload(upload_copy *c, const void *pixels)
 		memcpy(c->pixels, pixels, bytes);
 }
 
-static void playra_glDeleteTextures(GLsizei n, const GLuint *textures)
+void playra_glDeleteTextures(GLsizei n, const GLuint *textures)
 {
 	for (GLsizei i = 0; i < n; i++)
 	{
@@ -376,7 +377,7 @@ static void playra_glDeleteTextures(GLsizei n, const GLuint *textures)
 	glDeleteTextures(n, textures);
 }
 
-static void playra_glBindTexture(GLenum target, GLuint texture)
+void playra_glBindTexture(GLenum target, GLuint texture)
 {
 	if (texture != 0 && texture < texture_state_size && (texture_state[texture] & TEXTURE_LIVE))
 		texture_state[texture] |= TEXTURE_BOUND;
@@ -385,7 +386,7 @@ static void playra_glBindTexture(GLenum target, GLuint texture)
 	glBindTexture(target, texture);
 }
 
-static void playra_glPixelStorei(GLenum pname, GLint param)
+void playra_glPixelStorei(GLenum pname, GLint param)
 {
 	switch (pname)
 	{
@@ -398,7 +399,7 @@ static void playra_glPixelStorei(GLenum pname, GLint param)
 	glPixelStorei(pname, param);
 }
 
-static void playra_glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height,
+void playra_glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height,
 	GLint border, GLenum format, GLenum type, const void *pixels)
 {
 	if (internalformat == PLAYRA_GL_BGRA)
@@ -422,7 +423,7 @@ static void playra_glTexImage2D(GLenum target, GLint level, GLint internalformat
 	record_upload(record, pixels);
 }
 
-static void playra_glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height,
+void playra_glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height,
 	GLenum format, GLenum type, const void *pixels)
 {
 	drop_upload_copy(current_texture_2d(target));
@@ -441,7 +442,7 @@ static void playra_glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GL
 	set_unpack(unpack_row_length, unpack_skip_pixels, unpack_skip_rows);
 }
 
-static void playra_glCopyTexImage2D(GLenum target, GLint level, GLenum internalformat, GLint x, GLint y,
+void playra_glCopyTexImage2D(GLenum target, GLint level, GLenum internalformat, GLint x, GLint y,
 	GLsizei width, GLsizei height, GLint border)
 {
 	if (internalformat == PLAYRA_GL_BGRA)
@@ -459,9 +460,29 @@ static void playra_glCopyTexImage2D(GLenum target, GLint level, GLenum internalf
  * order anyway, and the browser submits everything at the end of each frame by itself. It cost 3 % of the main
  * thread in a match (V8 profile), so the browser build does not pass it on.
  */
-static void playra_glFlush(void)
+void playra_glFlush(void)
 {
 }
+
+/* The calls the shim replaces. OpenRA.Web/tools/gen-gl-signatures.py reads this table: the engine's direct GL
+ * bindings (DllImports in the generated GLEntryPoints) call these functions instead of the GL ones of the same name. */
+static const struct
+{
+	const char *name;
+	void *function;
+} replaced[] = {
+	{ "glPixelStorei", (void *)playra_glPixelStorei },
+	{ "glTexImage2D", (void *)playra_glTexImage2D },
+	{ "glTexSubImage2D", (void *)playra_glTexSubImage2D },
+	{ "glCopyTexImage2D", (void *)playra_glCopyTexImage2D },
+	{ "glGenTextures", (void *)playra_glGenTextures },
+	{ "glDeleteTextures", (void *)playra_glDeleteTextures },
+	{ "glBindTexture", (void *)playra_glBindTexture },
+	{ "glIsTexture", (void *)playra_glIsTexture },
+	{ "glFlush", (void *)playra_glFlush },
+	{ "glActiveTexture", (void *)playra_glActiveTexture },
+	{ "glFramebufferTexture2D", (void *)playra_glFramebufferTexture2D },
+};
 
 void *playra_gl_get_proc_address(const char *name)
 {
@@ -471,38 +492,9 @@ void *playra_gl_get_proc_address(const char *name)
 	if (!context_configured)
 		context_configured = playra_gl_first_vertex_convention() >= 0;
 
-	if (strcmp(name, "glPixelStorei") == 0)
-		return (void *)playra_glPixelStorei;
-
-	if (strcmp(name, "glTexImage2D") == 0)
-		return (void *)playra_glTexImage2D;
-
-	if (strcmp(name, "glTexSubImage2D") == 0)
-		return (void *)playra_glTexSubImage2D;
-
-	if (strcmp(name, "glCopyTexImage2D") == 0)
-		return (void *)playra_glCopyTexImage2D;
-
-	if (strcmp(name, "glGenTextures") == 0)
-		return (void *)playra_glGenTextures;
-
-	if (strcmp(name, "glDeleteTextures") == 0)
-		return (void *)playra_glDeleteTextures;
-
-	if (strcmp(name, "glBindTexture") == 0)
-		return (void *)playra_glBindTexture;
-
-	if (strcmp(name, "glIsTexture") == 0)
-		return (void *)playra_glIsTexture;
-
-	if (strcmp(name, "glFlush") == 0)
-		return (void *)playra_glFlush;
-
-	if (strcmp(name, "glActiveTexture") == 0)
-		return (void *)playra_glActiveTexture;
-
-	if (strcmp(name, "glFramebufferTexture2D") == 0)
-		return (void *)playra_glFramebufferTexture2D;
+	for (size_t i = 0; i < sizeof(replaced) / sizeof(replaced[0]); i++)
+		if (strcmp(name, replaced[i].name) == 0)
+			return replaced[i].function;
 
 	return SDL_GL_GetProcAddress(name);
 }
