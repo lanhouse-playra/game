@@ -236,9 +236,22 @@ static GLuint current_texture_2d(GLenum target)
 	return target == GL_TEXTURE_2D && active_unit < TEXTURE_UNITS ? bound_texture_2d[active_unit] : 0;
 }
 
+/*
+ * Redundant texture state changes. Before every draw the engine selects each texture unit its shader samples and
+ * binds the unit's texture again (Shader.PrepareRender), nearly always the unit and texture already current. In
+ * WebGL each of those calls goes into the browser (a call out of WebAssembly, WebGL's validation, a command for the
+ * GPU process), so the shim, which sees every unit selection and binding, drops the ones that change nothing.
+ * GL resets a deleted texture's bindings to 0, which glDeleteTextures below mirrors.
+ */
+static int active_unit_known = 0;
+
 void playra_glActiveTexture(GLenum texture)
 {
+	if (active_unit_known && texture - GL_TEXTURE0 == active_unit)
+		return;
+
 	active_unit = texture - GL_TEXTURE0;
+	active_unit_known = 1;
 	glActiveTexture(texture);
 }
 
@@ -382,7 +395,13 @@ void playra_glBindTexture(GLenum target, GLuint texture)
 	if (texture != 0 && texture < texture_state_size && (texture_state[texture] & TEXTURE_LIVE))
 		texture_state[texture] |= TEXTURE_BOUND;
 	if (target == GL_TEXTURE_2D && active_unit < TEXTURE_UNITS)
+	{
+		if (bound_texture_2d[active_unit] == texture && texture != 0)
+			return;
+
 		bound_texture_2d[active_unit] = texture;
+	}
+
 	glBindTexture(target, texture);
 }
 
