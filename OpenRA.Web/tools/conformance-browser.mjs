@@ -10,7 +10,8 @@
 //
 // usage: node conformance-browser.mjs <url> <out>
 // env:   PLAYWRIGHT_CORE  path of a playwright-core package (default: resolve 'playwright-core')
-//        CHROME           Chromium executable; GPU=1 adds the flags for a real GPU (ANGLE/GL)
+//        CHROME           Chromium executable; GPU=1 adds the flags for a real GPU (ANGLE on Vulkan: headless
+//                         Chrome without a display gets no GPU through ANGLE on GL)
 //        BOOT_TIMEOUT     seconds to wait for the boot (default 600)
 
 import { createRequire } from 'node:module';
@@ -23,7 +24,7 @@ if (!url || !out) {
 }
 
 const { chromium } = createRequire(import.meta.url)(process.env.PLAYWRIGHT_CORE || 'playwright-core');
-const args = process.env.GPU === '1' ? ['--use-angle=gl', '--enable-gpu', '--ignore-gpu-blocklist'] : [];
+const args = process.env.GPU === '1' ? ['--use-angle=vulkan', '--enable-features=Vulkan', '--enable-gpu', '--ignore-gpu-blocklist'] : [];
 const browser = await chromium.launch({ headless: true, args, ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}) });
 let status = 0;
 try {
@@ -32,6 +33,10 @@ try {
 	page.on('console', m => log.push(`[${m.type()}] ${m.text()}`));
 	page.on('pageerror', e => log.push(`[pageerror] ${e.message}`));
 	await page.goto(url);
+	// A build with a start screen (build-web.sh PLAYRA_SPLASH, as the hosting targets) waits for a click.
+	await page.waitForFunction(() => window.PlayRA && window.PlayRA.phase !== 'loading', null, { timeout: 60000, polling: 200 });
+	if (await page.evaluate(() => window.PlayRA.phase === 'splash'))
+		await page.click('#splash-play');
 	await page.waitForFunction(() => window.PlayRA && ['running', 'error', 'exited'].includes(window.PlayRA.phase),
 		null, { timeout: (+process.env.BOOT_TIMEOUT || 600) * 1000, polling: 500 });
 
