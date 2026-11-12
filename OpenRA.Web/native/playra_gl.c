@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <GLES3/gl3.h>
+#include <emscripten/em_js.h>
 #ifdef __wasm_simd128__
 #include <wasm_simd128.h>
 #endif
@@ -32,6 +33,32 @@
 #define PLAYRA_GL_BGRA 0x80E1
 
 extern void *SDL_GL_GetProcAddress(const char *proc);
+
+/*
+ * Flat varyings take their value from the provoking vertex of each triangle, which in GL (and so in WebGL)
+ * is the last one. Direct3D uses the first, so ANGLE's D3D11 backend (Chrome and Edge on Windows) emulates
+ * the GL convention with a geometry shader in every draw of a program with flat varyings: OpenRA's sprite
+ * shader (glsl/combined.vert) has six. WEBGL_provoking_vertex, where the browser has it, switches the context
+ * to the first-vertex convention, and ANGLE then draws without the geometry shader. The image is the same:
+ * every vertex of a quad the engine builds carries the same values in the attributes behind the flat
+ * varyings (Util.FastCreateQuad, TerrainSpriteLayer, RgbaColorRenderer), so both conventions pick the same.
+ * Returns 1 if the convention was switched, 0 if the extension is missing, -1 without a current context.
+ */
+EM_JS(int, playra_gl_first_vertex_convention, (void), {
+	var gl = typeof GLctx !== 'undefined' ? GLctx : null;
+	if (!gl)
+		return -1;
+	var ext = gl.getExtension('WEBGL_provoking_vertex');
+	if (!ext) {
+		console.log('[playra] WebGL: no WEBGL_provoking_vertex, flat varyings keep the last-vertex convention');
+		return 0;
+	}
+	ext.provokingVertexWEBGL(ext.FIRST_VERTEX_CONVENTION_WEBGL);
+	console.log('[playra] WebGL: first-vertex provoking convention (WEBGL_provoking_vertex)');
+	return 1;
+});
+
+static int context_configured = 0;
 
 static GLint unpack_row_length = 0;
 static GLint unpack_skip_pixels = 0;
@@ -438,6 +465,12 @@ static void playra_glFlush(void)
 
 void *playra_gl_get_proc_address(const char *name)
 {
+	/* The engine looks up every GL entry point right after it has created the context and made it current
+	 * (OpenGL.Initialize), so the first lookup is the moment to configure the context. The page has one
+	 * WebGL context for its whole life. */
+	if (!context_configured)
+		context_configured = playra_gl_first_vertex_convention() >= 0;
+
 	if (strcmp(name, "glPixelStorei") == 0)
 		return (void *)playra_glPixelStorei;
 
