@@ -72,6 +72,10 @@ namespace OpenRA.Mods.Common
 			var games = new List<MiniYamlNode>();
 			foreach (var game in document.RootElement.EnumerateArray())
 			{
+				// One entry that is not a game must not cost the whole list (the YAML path skips invalid games too).
+				if (game.ValueKind != JsonValueKind.Object)
+					continue;
+
 				var nodes = new List<MiniYamlNode>();
 				foreach (var property in game.EnumerateObject())
 				{
