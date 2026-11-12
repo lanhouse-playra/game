@@ -903,6 +903,9 @@ async function main() {
 		// visit). The _framework files are fingerprinted and served as immutable (tools/publish.py),
 		// and the unfingerprinted dotnet.js is revalidated by its own Cache-Control header.
 		.withConfig({ disableNoCacheFetch: true })
+		// Dev builds with Mono's AOT profiler (build-web.sh PLAYRA_AOT_PROFILER=1): it records from the start, and
+		// PlayRA.allExports.OpenRA.Web.AotProfileRecorder.Write() saves the profile (OpenRA.Web/aot/AotProfileRecorder.cs).
+		.withConfig(devBuild && build.aotProfiler ? { aotProfilerOptions: { writeAt: 'OpenRA.Web.AotProfileRecorder:WriteTrigger', sendTo: 'OpenRA.Web.AotProfileRecorder:Save' } } : {})
 		.withRuntimeOptions(debugParams('rt'))
 		// Mono's interpreter (.NET 10.0.14) corrupts memory during OpenRA's Lua (Eluant) callbacks when
 		// methods tier up while re-entered from native code: "memory access out of bounds" in Chrome,

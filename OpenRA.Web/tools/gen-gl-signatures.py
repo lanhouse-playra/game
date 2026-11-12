@@ -8,7 +8,7 @@
 
 """Generates GLSignatures.g.cs for the browser build.
 
-usage: gen-gl-signatures.py <OpenGL.cs> <output .cs>
+usage: gen-gl-signatures.py <OpenGL.cs> <output .cs> <native/playra_gl.c>
 
 OpenRA.Platforms.Default/OpenGL.cs calls GL through delegates created with
 Marshal.GetDelegateForFunctionPointer. On WebAssembly the runtime can only call a native function
@@ -16,6 +16,14 @@ pointer whose signature was seen at build time (it needs a precompiled trampolin
 and the build only records signatures of [UnmanagedFunctionPointer] delegates and DllImports.
 OpenGL.cs's delegates carry no attribute, so this mirrors their native signatures as attributed
 delegates in OpenRA.Web. Every non-floating-point argument is pointer-sized on wasm32.
+
+It also writes GLEntryPoints: the GL functions whose delegates take and return only plain values
+(integers, floats, IntPtr, bool, out/ref integers) as DllImports of the build's native code, with the
+delegates' own managed signatures. A delegate made from a function pointer calls it through a
+marshalling wrapper that the runtime creates at run time, and the browser runtime can only interpret
+it; the wrappers of DllImports are compiled ahead of time. OpenGL.Bind creates the engine's delegates
+from these methods when they exist. The calls the GL shim replaces (the table "replaced" in
+native/playra_gl.c) are imported from the shim, the others from emscripten's GL library.
 """
 
 import re
@@ -29,8 +37,50 @@ def native_type(managed):
     return KEEP.get(managed, "IntPtr")
 
 
+# Managed types that cross the DllImport boundary unchanged (or as a plain pointer to one, with out/ref).
+PLAIN = {"void", "int", "uint", "float", "double", "long", "ulong", "IntPtr", "bool"}
+BIND = re.compile(r'\bBind<(\w+)>\("(\w+)"\)')
+REPLACED = re.compile(r'\{\s*"(gl\w+)",\s*\(void \*\)(\w+)\s*\}')
+
+
+def plain(ret, params):
+    if ret not in PLAIN:
+        return False
+    for param in params:
+        tokens = param.split()
+        if len(tokens) < 2 or tokens[-2] not in PLAIN or any(t not in ("ref", "out") for t in tokens[:-2]):
+            return False
+        if tokens[-2] == "void" or (tokens[:-2] and tokens[-2] not in ("int", "uint")):
+            return False
+    return True
+
+
+def entry_points(source, shim):
+    delegates = {name: (ret, [p.strip() for p in params.split(",") if p.strip()]) for ret, name, params in DELEGATE.findall(source)}
+    replaced = dict(REPLACED.findall(shim))
+    lines = [
+        "",
+        "\t[System.Runtime.Versioning.SupportedOSPlatform(\"browser\")]",
+        "\tstatic class GLEntryPoints",
+        "\t{",
+    ]
+    count = 0
+    for delegate, function in sorted(set(BIND.findall(source)), key=lambda b: b[1]):
+        if delegate not in delegates:
+            continue
+        ret, params = delegates[delegate]
+        if not plain(ret, params):
+            continue
+        params = [" ".join(p.split()) for p in params]
+        lines.append(f"\t\t[DllImport(\"playra\", EntryPoint = \"{replaced.get(function, function)}\")]")
+        lines.append(f"\t\tpublic static extern {ret} {function}({', '.join(params)});")
+        count += 1
+    lines.append("\t}")
+    return lines, count
+
+
 def main():
-    if len(sys.argv) != 3:
+    if len(sys.argv) != 4:
         sys.exit(__doc__)
 
     source = open(sys.argv[1], encoding="utf-8-sig").read()
@@ -61,11 +111,14 @@ def main():
         lines.append("\t\t[UnmanagedFunctionPointer(CallingConvention.Cdecl)]")
         lines.append(f"\t\tinternal delegate {ret} Signature{i}({arglist});")
 
-    lines += ["\t}", "}", ""]
+    lines.append("\t}")
+    direct, count = entry_points(source, open(sys.argv[3], encoding="utf-8").read())
+    lines += direct
+    lines += ["}", ""]
     with open(sys.argv[2], "w", encoding="utf-8") as out:
         out.write("\n".join(lines))
 
-    print(f"{sys.argv[2]}: {len(signatures)} signatures")
+    print(f"{sys.argv[2]}: {len(signatures)} signatures, {count} direct entry points")
 
 
 if __name__ == "__main__":
