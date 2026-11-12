@@ -24,6 +24,8 @@
 #   PLAYRA_DEV           1 for a dev build (see above)
 #   PLAYRA_AOT           1 to build with Mono AOT (RunAOTCompilation), default 0
 #   PLAYRA_AOT_SERIAL    true (default) compiles assemblies one at a time; parallel AOT needs > 6 GB
+#   PLAYRA_AOT_PROFILER  1 (dev AOT builds only) links Mono's AOT profiler, to record OpenRA.Web/aot/playra.aotprofile
+#                       (OpenRA.Web/aot/AotProfileRecorder.cs); such a build does not use the profile it records
 #   PLAYRA_MODS          mods to package (default: "ra")
 #   PLAYRA_CONTENT_DIR   optional local directory with the mod content (e.g. .../Content/ra/v2).
 #                       It is packaged into dist/data for local testing only. Never publish it.
@@ -279,7 +281,7 @@ dotnet build "${ELUANT_SRC}/Eluant/Eluant.csproj" -c Release -nologo -v quiet -p
 	-p:DefineConstants=MONOTOUCH -p:OutputPath="${OBJ}/eluant/"
 
 echo "== Generated sources"
-python3 -I "${SRC_WEB}/tools/gen-gl-signatures.py" "${SRC}/OpenRA.Platforms.Default/OpenGL.cs" "${OBJ}/GLSignatures.g.cs"
+python3 -I "${SRC_WEB}/tools/gen-gl-signatures.py" "${SRC}/OpenRA.Platforms.Default/OpenGL.cs" "${OBJ}/GLSignatures.g.cs" "${SRC_WEB}/native/playra_gl.c"
 DEV_BOOL=false
 [ "${PLAYRA_DEV}" = "1" ] && DEV_BOOL=true
 cat > "${OBJ}/PlayraBuildInfo.g.cs" << EOF
@@ -304,6 +306,11 @@ if [ "${PLAYRA_AOT}" = "1" ]; then
 	# emcc's -O2 link step runs wasm-opt over the whole AOT module, which needs more than 6 GB.
 	LINK_OPT="${PLAYRA_AOT_LINK_OPT:--O1}"
 fi
+AOT_PROFILER=false
+if [ "${PLAYRA_AOT_PROFILER:-0}" = "1" ]; then
+	[ "${PLAYRA_DEV}" = "1" ] && [ "${RUN_AOT}" = "true" ] || fail "PLAYRA_AOT_PROFILER=1 needs a dev AOT build (PLAYRA_DEV=1 PLAYRA_AOT=1)"
+	AOT_PROFILER=true
+fi
 PUBLISH="${SRC_WEB}/bin/${CONFIGURATION}/publish"
 rm -rf "${PUBLISH}"
 dotnet publish "${SRC_WEB}/OpenRA.Web.csproj" -c "${CONFIGURATION}" -nologo \
@@ -312,6 +319,7 @@ dotnet publish "${SRC_WEB}/OpenRA.Web.csproj" -c "${CONFIGURATION}" -nologo \
 	-p:PlayraGeneratedDir="${OBJ}/" \
 	-p:PlayraEmCache="${EM_CACHE}/" \
 	-p:RunAOTCompilation="${RUN_AOT}" \
+	-p:PlayraAotProfiler="${AOT_PROFILER}" \
 	-p:DisableParallelAot="${PLAYRA_AOT_SERIAL:-true}" \
 	-p:EmccLinkOptimizationFlag="${LINK_OPT}" \
 	-p:PublishDir="${PUBLISH}/"
@@ -329,6 +337,9 @@ ${CHECK} --module lua51 "\"${LUA_SRC}/lua.h\"" "\"${LUA_SRC}/lauxlib.h\"" "\"${L
 ${CHECK} --module soft_oal "<AL/al.h>" "<AL/alc.h>"
 ${CHECK} --module freetype6 --cflag=-sUSE_FREETYPE=1 "<ft2build.h>" "FT_FREETYPE_H"
 ${CHECK} --module SDL2 --cflag=-sUSE_SDL=2 "<SDL2/SDL.h>" "<SDL2/SDL_vulkan.h>" "<SDL2/SDL_syswm.h>" | grep -v "not declared in the headers"
+# The GL entry points the engine binds directly (GLEntryPoints, tools/gen-gl-signatures.py): WebGL 2 through emscripten's
+# GLES 3 functions and the GL shim's replacements.
+${CHECK} --module playra "<GLES3/gl3.h>" "\"${SRC_WEB}/native/playra_gl.h\""
 
 # Lua's number-to-integer conversions match desktop x64 only while clang lowers them to guarded
 # i32/i64.trunc_f64_s (INT_MIN out of range, like cvttsd2si). The saturating forms (nontrapping-fptoint)
@@ -468,7 +479,7 @@ fi
 FRAMEWORK_BYTES="$(cat "${DIST}"/_framework/*.br | wc -c)"
 
 cat > "${DIST}/data/build.json" << EOF
-{"version":"${VERSION}","commit":"${COMMIT}","dev":${DEV_BOOL},"configuration":"${CONFIGURATION}","aot":${RUN_AOT},"runtime":"${DOTNET_RUNTIME_VERSION}","mods":"${PLAYRA_MODS}","target":"${PLAYRA_TARGET:-}","content":$([ -n "${PLAYRA_CONTENT_DIR:-}" ] && echo true || echo false),"proxy":"${PLAYRA_RELAY_URL}","contentRelay":"${PLAYRA_CONTENT_RELAY}","contentUrl":"${PLAYRA_CONTENT_URL}","masterRelay":"${PLAYRA_MASTER_RELAY}","storage":"${PLAYRA_STORAGE_NAME}","engineData":"data/engine.${ENGINE_HASH}","mapData":"${MAP_DATA}","contentManifest":"data/content-packages.json","frameworkBytes":${FRAMEWORK_BYTES}}
+{"version":"${VERSION}","commit":"${COMMIT}","dev":${DEV_BOOL},"configuration":"${CONFIGURATION}","aot":${RUN_AOT},"runtime":"${DOTNET_RUNTIME_VERSION}","mods":"${PLAYRA_MODS}","target":"${PLAYRA_TARGET:-}","content":$([ -n "${PLAYRA_CONTENT_DIR:-}" ] && echo true || echo false),"proxy":"${PLAYRA_RELAY_URL}","contentRelay":"${PLAYRA_CONTENT_RELAY}","contentUrl":"${PLAYRA_CONTENT_URL}","masterRelay":"${PLAYRA_MASTER_RELAY}","storage":"${PLAYRA_STORAGE_NAME}","engineData":"data/engine.${ENGINE_HASH}","mapData":"${MAP_DATA}","contentManifest":"data/content-packages.json","frameworkBytes":${FRAMEWORK_BYTES},"aotProfiler":${AOT_PROFILER}}
 EOF
 
 # The page title (PLAYRA_PAGE_TITLE). Only the browser tab's title: the game's own name and window title stay.
