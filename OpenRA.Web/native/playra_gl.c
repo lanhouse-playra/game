@@ -225,6 +225,18 @@ static void playra_glCopyTexImage2D(GLenum target, GLint level, GLenum internalf
 	glCopyTexImage2D(target, level, internalformat, x, y, width, height, border);
 }
 
+/*
+ * glFlush: the engine flushes whenever it binds or unbinds a framebuffer (FrameBuffer.Bind/Unbind, four times a
+ * frame), which on a desktop GL hands the queued commands to the driver early. In WebGL every flush is a call into
+ * the browser that submits the command buffer to its GPU process (a message to that process, and in ANGLE's D3D11
+ * backend a flush of the D3D device context there), and it bought nothing: the commands of one context run in
+ * order anyway, and the browser submits everything at the end of each frame by itself. It cost 3 % of the main
+ * thread in a match (V8 profile), so the browser build does not pass it on.
+ */
+static void playra_glFlush(void)
+{
+}
+
 void *playra_gl_get_proc_address(const char *name)
 {
 	if (strcmp(name, "glPixelStorei") == 0)
@@ -250,6 +262,9 @@ void *playra_gl_get_proc_address(const char *name)
 
 	if (strcmp(name, "glIsTexture") == 0)
 		return (void *)playra_glIsTexture;
+
+	if (strcmp(name, "glFlush") == 0)
+		return (void *)playra_glFlush;
 
 	return SDL_GL_GetProcAddress(name);
 }
