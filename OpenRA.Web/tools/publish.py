@@ -100,7 +100,7 @@ ICONS = re.compile(r"^(favicon\.(svg|ico)|favicon-[0-9]+\.png|apple-touch-icon\.
 CACHE_ICON = "public, max-age=86400"
 
 # Hosts the engine itself talks to: the server list, the resource center (maps), mod metadata and
-# icons, the forum (account link). Same list as deploy/playra.caddy.
+# icons, the forum (account link).
 OPENRA_HOSTS = ["https://master.openra.net", "https://resource.openra.net", "https://www.openra.net", "https://forum.openra.net"]
 
 

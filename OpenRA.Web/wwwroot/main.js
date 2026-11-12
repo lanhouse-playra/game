@@ -900,7 +900,7 @@ async function main() {
 				progress.set('framework', 'Game engine', Math.round((total ? loaded / total : 0) * frameworkBytes), frameworkBytes),
 		})
 		// The loader would fetch every resource with cache: 'no-cache' (a revalidation per file per
-		// visit). The _framework files are fingerprinted and served as immutable (deploy/playra.caddy),
+		// visit). The _framework files are fingerprinted and served as immutable (tools/publish.py),
 		// and the unfingerprinted dotnet.js is revalidated by its own Cache-Control header.
 		.withConfig({ disableNoCacheFetch: true })
 		.withRuntimeOptions(debugParams('rt'))
@@ -1022,7 +1022,7 @@ async function main() {
 		loadDeferredMaps(at(build.mapData), FS, host, sleep);
 }
 
-// Content-Security-Policy violations (deploy/playra.caddy) are recorded for tests and bug reports.
+// Content-Security-Policy violations (tools/publish.py csp) are recorded for tests and bug reports.
 document.addEventListener('securitypolicyviolation', e => PlayRA.errors.push(`CSP: ${e.violatedDirective} blocked ${e.blockedURI}`));
 window.addEventListener('error', e => PlayRA.errors.push(String(e.error && e.error.stack || e.message)));
 window.addEventListener('unhandledrejection', e => PlayRA.errors.push(String(e.reason && e.reason.stack || e.reason)));
