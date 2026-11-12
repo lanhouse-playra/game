@@ -57,6 +57,18 @@
 	</PropertyGroup>
 
 	<!--
+		Libraries the browser build does not use, compiled to WebAssembly for nothing: they are left to the
+		interpreter (which would run them if they were ever called), so the native module carries no code for
+		them. Newtonsoft.Json and DiscordRPC (Discord rich presence, which a browser cannot reach), with what
+		only Newtonsoft.Json keeps (System.Private.Xml, System.Data.Common, Microsoft.CSharp, ...); TagLibSharp
+		(MP3 tags; Red Alert has no MP3); Mono.Nat (UPnP) and BeaconLib (LAN game discovery), which need sockets.
+		None of them ran in a recorded session (aot/playra.aotprofile). The SDK's item for "do not AOT".
+	-->
+	<ItemGroup Condition="'$(RunAOTCompilation)' == 'true'">
+		<_AOT_InternalForceInterpretAssemblies Include="Newtonsoft.Json.dll;DiscordRPC.dll;System.Private.Xml.dll;System.Private.Xml.Linq.dll;System.Data.Common.dll;System.Runtime.Serialization.Formatters.dll;Microsoft.CSharp.dll;TagLibSharp.dll;Mono.Nat.dll;BeaconLib.dll" />
+	</ItemGroup>
+
+	<!--
 		Generic instances found at run time. The AOT compiler compiles the generic instances it sees in the code;
 		others (instances made by shared generic code at run time, value types as type arguments across assemblies)
 		ran in Mono's interpreter, about a tenth of the main thread in a match. aot/playra.aotprofile, recorded
