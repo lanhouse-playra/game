@@ -16,8 +16,9 @@
  *
  * The engine's GLES profile uploads textures as GL_BGRA (GL_EXT_texture_format_BGRA8888),
  * which WebGL 2 does not support. These wrappers convert BGRA to RGBA on upload so that
- * the engine and its shaders stay unchanged. Pixel data is only touched on texture uploads,
- * which happen when sheets are created or updated, not every frame.
+ * the engine and its shaders stay unchanged. Pixel data is only touched on texture uploads:
+ * when sheets are created or updated, and for the textures the engine uploads whole every
+ * frame, only the rows that changed (see "Repeated whole-texture uploads" below).
  */
 
 #include <stdint.h>
@@ -140,20 +141,6 @@ static void playra_glGenTextures(GLsizei n, GLuint *textures)
 		texture_state_update(textures[i], TEXTURE_LIVE, TEXTURE_BOUND);
 }
 
-static void playra_glDeleteTextures(GLsizei n, const GLuint *textures)
-{
-	for (GLsizei i = 0; i < n; i++)
-		texture_state_update(textures[i], 0, TEXTURE_LIVE | TEXTURE_BOUND);
-	glDeleteTextures(n, textures);
-}
-
-static void playra_glBindTexture(GLenum target, GLuint texture)
-{
-	if (texture != 0 && texture < texture_state_size && (texture_state[texture] & TEXTURE_LIVE))
-		texture_state[texture] |= TEXTURE_BOUND;
-	glBindTexture(target, texture);
-}
-
 static GLboolean playra_glIsTexture(GLuint texture)
 {
 	return texture != 0 && texture < texture_state_size
@@ -165,6 +152,210 @@ static void set_unpack(GLint row_length, GLint skip_pixels, GLint skip_rows)
 	glPixelStorei(GL_UNPACK_ROW_LENGTH, row_length);
 	glPixelStorei(GL_UNPACK_SKIP_PIXELS, skip_pixels);
 	glPixelStorei(GL_UNPACK_SKIP_ROWS, skip_rows);
+}
+
+/*
+ * Repeated whole-texture uploads. Some textures are uploaded again, whole, every frame: the radar (RadarWidget
+ * commits its whole sheet in every Draw, up to 512x512) and the palettes (HardwarePalette, every frame), mostly
+ * with the same pixels as the frame before. Each such upload cost a BGRA conversion of the whole image, the copy
+ * into the browser's GPU transfer buffer and, in the GPU process, a re-specification of the texture (a new
+ * storage on some backends). For a texture that has had two BGRA texImage2D uploads of the same size, the shim
+ * keeps a copy of the last pixels it uploaded and compares the next upload with it: unchanged pixels are not
+ * uploaded at all, and otherwise only the band of rows that changed goes up, with texSubImage2D (same result:
+ * the rest of the texture already holds those pixels). Anything else that writes the texture (a sub-image
+ * upload, a copy from the framebuffer, rendering into it, another format or size) drops the copy.
+ * Only textures up to UPLOAD_COPY_MAX_BYTES, and at most UPLOAD_COPIES of them, are tracked.
+ */
+#define UPLOAD_COPIES 8
+#define UPLOAD_COPY_MAX_BYTES (4u << 20)
+#define TEXTURE_UNITS 32
+
+typedef struct
+{
+	GLuint texture;
+	GLsizei width, height;
+	GLint internalformat;
+	GLenum type;
+	unsigned uploads;
+	uint8_t *pixels; /* tightly packed BGRA, as last uploaded; NULL until the second upload */
+} upload_copy;
+
+static upload_copy upload_copies[UPLOAD_COPIES];
+static GLuint active_unit = 0;
+static GLuint bound_texture_2d[TEXTURE_UNITS];
+
+static upload_copy *find_upload_copy(GLuint texture)
+{
+	for (int i = 0; i < UPLOAD_COPIES; i++)
+		if (upload_copies[i].texture == texture && texture != 0)
+			return &upload_copies[i];
+
+	return NULL;
+}
+
+static void drop_upload_copy(GLuint texture)
+{
+	upload_copy *c = find_upload_copy(texture);
+	if (c == NULL)
+		return;
+
+	free(c->pixels);
+	memset(c, 0, sizeof(*c));
+}
+
+static GLuint current_texture_2d(GLenum target)
+{
+	return target == GL_TEXTURE_2D && active_unit < TEXTURE_UNITS ? bound_texture_2d[active_unit] : 0;
+}
+
+static void playra_glActiveTexture(GLenum texture)
+{
+	active_unit = texture - GL_TEXTURE0;
+	glActiveTexture(texture);
+}
+
+static void playra_glFramebufferTexture2D(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level)
+{
+	/* Rendering into the texture would change it behind the copy's back. */
+	drop_upload_copy(texture);
+	glFramebufferTexture2D(target, attachment, textarget, texture, level);
+}
+
+/* Row y of two images with rows of row_bytes bytes, compared 64 bytes at a time with WebAssembly SIMD (libc's memcmp
+ * compares byte by byte here, and an unchanged radar image is a megabyte to compare every frame). */
+static int same_row(const uint8_t *a, const uint8_t *b, size_t row_bytes, GLsizei y)
+{
+	a += (size_t)y * row_bytes;
+	b += (size_t)y * row_bytes;
+	size_t i = 0;
+#ifdef __wasm_simd128__
+	for (; i + 64 <= row_bytes; i += 64)
+	{
+		v128_t d = wasm_v128_or(
+			wasm_v128_or(wasm_v128_xor(wasm_v128_load(a + i), wasm_v128_load(b + i)),
+				wasm_v128_xor(wasm_v128_load(a + i + 16), wasm_v128_load(b + i + 16))),
+			wasm_v128_or(wasm_v128_xor(wasm_v128_load(a + i + 32), wasm_v128_load(b + i + 32)),
+				wasm_v128_xor(wasm_v128_load(a + i + 48), wasm_v128_load(b + i + 48))));
+		if (wasm_v128_any_true(d))
+			return 0;
+	}
+#endif
+	return memcmp(a + i, b + i, row_bytes - i) == 0;
+}
+
+/* A BGRA texImage2D of a whole texture (level 0, no skips). Returns 1 if it was handled from the copy (nothing or
+ * only the changed rows uploaded), 0 if the caller must upload it as usual; then the copy is updated after it. */
+static int upload_from_copy(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height,
+	GLenum type, const void *pixels, upload_copy **record)
+{
+	*record = NULL;
+	GLuint texture = current_texture_2d(target);
+	if (texture == 0 || level != 0 || pixels == NULL || unpack_skip_pixels != 0 || unpack_skip_rows != 0
+		|| (unpack_row_length != 0 && unpack_row_length != width) || type != GL_UNSIGNED_BYTE)
+	{
+		drop_upload_copy(texture);
+		return 0;
+	}
+
+	const size_t row_bytes = (size_t)width * 4;
+	const size_t bytes = row_bytes * (size_t)height;
+	upload_copy *c = find_upload_copy(texture);
+	if (c != NULL && (c->width != width || c->height != height || c->internalformat != internalformat || c->type != type))
+	{
+		drop_upload_copy(texture);
+		c = NULL;
+	}
+
+	if (c != NULL && c->pixels != NULL)
+	{
+		const uint8_t *src = (const uint8_t *)pixels;
+		GLsizei first = 0;
+		while (first < height && same_row(src, c->pixels, row_bytes, first))
+			first++;
+
+		if (first == height)
+			return 1;
+
+		GLsizei last = height - 1;
+		while (last > first && same_row(src, c->pixels, row_bytes, last))
+			last--;
+
+		const GLsizei rows = last - first + 1;
+		const uint8_t *rgba = convert_bgra(src + (size_t)first * row_bytes, width, rows);
+		if (rgba == NULL)
+			return 0;
+
+		set_unpack(0, 0, 0);
+		glTexSubImage2D(target, 0, 0, first, width, rows, GL_RGBA, type, rgba);
+		set_unpack(unpack_row_length, unpack_skip_pixels, unpack_skip_rows);
+		memcpy(c->pixels + (size_t)first * row_bytes, src + (size_t)first * row_bytes, (size_t)rows * row_bytes);
+		return 1;
+	}
+
+	if (bytes > UPLOAD_COPY_MAX_BYTES)
+		return 0;
+
+	if (c == NULL)
+	{
+		for (int i = 0; i < UPLOAD_COPIES && c == NULL; i++)
+			if (upload_copies[i].texture == 0)
+				c = &upload_copies[i];
+
+		/* All slots taken: reuse one that never got its copy (a texture uploaded once, e.g. a finished sheet). */
+		for (int i = 0; i < UPLOAD_COPIES && c == NULL; i++)
+			if (upload_copies[i].pixels == NULL)
+				c = &upload_copies[i];
+
+		if (c == NULL)
+			return 0;
+
+		memset(c, 0, sizeof(*c));
+		c->texture = texture;
+		c->width = width;
+		c->height = height;
+		c->internalformat = internalformat;
+		c->type = type;
+	}
+
+	*record = c;
+	return 0;
+}
+
+/* After a full upload: count it, and from the second one on keep its pixels. */
+static void record_upload(upload_copy *c, const void *pixels)
+{
+	if (c == NULL)
+		return;
+
+	const size_t bytes = (size_t)c->width * (size_t)c->height * 4;
+	if (++c->uploads >= 2 && c->pixels == NULL)
+		c->pixels = (uint8_t *)malloc(bytes);
+
+	if (c->pixels != NULL)
+		memcpy(c->pixels, pixels, bytes);
+}
+
+static void playra_glDeleteTextures(GLsizei n, const GLuint *textures)
+{
+	for (GLsizei i = 0; i < n; i++)
+	{
+		texture_state_update(textures[i], 0, TEXTURE_LIVE | TEXTURE_BOUND);
+		drop_upload_copy(textures[i]);
+		for (int u = 0; u < TEXTURE_UNITS; u++)
+			if (bound_texture_2d[u] == textures[i])
+				bound_texture_2d[u] = 0;
+	}
+
+	glDeleteTextures(n, textures);
+}
+
+static void playra_glBindTexture(GLenum target, GLuint texture)
+{
+	if (texture != 0 && texture < texture_state_size && (texture_state[texture] & TEXTURE_LIVE))
+		texture_state[texture] |= TEXTURE_BOUND;
+	if (target == GL_TEXTURE_2D && active_unit < TEXTURE_UNITS)
+		bound_texture_2d[active_unit] = texture;
+	glBindTexture(target, texture);
 }
 
 static void playra_glPixelStorei(GLenum pname, GLint param)
@@ -188,19 +379,26 @@ static void playra_glTexImage2D(GLenum target, GLint level, GLint internalformat
 
 	if (format != PLAYRA_GL_BGRA)
 	{
+		drop_upload_copy(current_texture_2d(target));
 		glTexImage2D(target, level, internalformat, width, height, border, format, type, pixels);
 		return;
 	}
+
+	upload_copy *record;
+	if (upload_from_copy(target, level, internalformat, width, height, type, pixels, &record))
+		return;
 
 	const uint8_t *rgba = convert_bgra(pixels, width, height);
 	set_unpack(0, 0, 0);
 	glTexImage2D(target, level, internalformat, width, height, border, GL_RGBA, type, rgba);
 	set_unpack(unpack_row_length, unpack_skip_pixels, unpack_skip_rows);
+	record_upload(record, pixels);
 }
 
 static void playra_glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height,
 	GLenum format, GLenum type, const void *pixels)
 {
+	drop_upload_copy(current_texture_2d(target));
 	if (format != PLAYRA_GL_BGRA)
 	{
 		glTexSubImage2D(target, level, xoffset, yoffset, width, height, format, type, pixels);
@@ -222,6 +420,7 @@ static void playra_glCopyTexImage2D(GLenum target, GLint level, GLenum internalf
 	if (internalformat == PLAYRA_GL_BGRA)
 		internalformat = GL_RGBA;
 
+	drop_upload_copy(current_texture_2d(target));
 	glCopyTexImage2D(target, level, internalformat, x, y, width, height, border);
 }
 
@@ -265,6 +464,12 @@ void *playra_gl_get_proc_address(const char *name)
 
 	if (strcmp(name, "glFlush") == 0)
 		return (void *)playra_glFlush;
+
+	if (strcmp(name, "glActiveTexture") == 0)
+		return (void *)playra_glActiveTexture;
+
+	if (strcmp(name, "glFramebufferTexture2D") == 0)
+		return (void *)playra_glFramebufferTexture2D;
 
 	return SDL_GL_GetProcAddress(name);
 }
