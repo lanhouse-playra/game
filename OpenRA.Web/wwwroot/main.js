@@ -117,6 +117,7 @@ const NOTICES = {
 	maps: 'The game\'s built-in maps could not be downloaded yet; the page keeps trying once a minute. Until they arrive, the map list holds only one built-in map and the maps downloaded from the OpenRA resource center, and a lobby on another built-in map shows that map as missing.',
 	mapsBroken: 'The game\'s built-in maps could not be added. Reload the page to try again.',
 	clock: 'This browser blocked the background clock the game uses in hidden tabs. If you switch to another tab or window during a multiplayer match, the game slows down for every player: keep this tab visible while you play.',
+	restart: 'The game did not restart: the changed settings could not be saved in this browser, and a restart reloads the page, which would lose them. If the browser storage for this site is full, free some space (for example, delete old replays in the game) and press Restart Now again.',
 };
 
 // Reset saved data: deletes the saved support directory (settings, profile, replays, maps), keeps
@@ -142,7 +143,8 @@ async function resetSaved() {
 
 // "Restart Now" in the game's settings: the browser's restart is a page reload. The engine has just written
 // settings.yaml into /support, and the reload restores /support from IndexedDB, so it is saved there first.
-// If that fails, the storage notice is up and the page stays as it is: a reload would lose the change.
+// If that fails, the page stays as it is (a reload would lose the change) and says so: the storage notice
+// may have been shown and closed already, and the dialog the button was in has gone.
 async function restart() {
 	try {
 		if (!PlayRA.support || await PlayRA.support.flush()) {
@@ -154,6 +156,7 @@ async function restart() {
 	}
 
 	console.warn('[playra] restart: the settings could not be saved, so the page was not reloaded');
+	notify(NOTICES.restart, true);
 }
 
 // Quit in the game's menu. With a start screen, the page goes back to it: the engine cannot start again
