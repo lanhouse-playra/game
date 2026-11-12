@@ -57,6 +57,15 @@
 	</PropertyGroup>
 
 	<!--
+		Mono's GC (SGen) collects its nursery every 4 MiB of allocation by default: about 200 collections a minute in a
+		busy match. A 16 MiB nursery collects about four times less often and lets more short-lived objects die before
+		they are promoted; it fits in the memory the heap has anyway (the wasm memory of a match did not grow).
+	-->
+	<ItemGroup>
+		<WasmEnvironmentVariable Include="MONO_GC_PARAMS" Value="nursery-size=16m" />
+	</ItemGroup>
+
+	<!--
 		Libraries the browser build does not use, compiled to WebAssembly for nothing: they are left to the
 		interpreter (which would run them if they were ever called), so the native module carries no code for
 		them. Newtonsoft.Json and DiscordRPC (Discord rich presence, which a browser cannot reach), with what
